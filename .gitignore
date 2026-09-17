@@ -1,0 +1,22 @@
+# ============================
+# Personal notes & scratch files
+# ============================
+# Tài liệu tham khảo cá nhân (không đưa lên GitHub)
+note/
+
+# ============================
+# OS & Editor junk
+# ============================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ============================
+# Node.js (nếu dùng sau này)
+# ============================
+node_modules/
+npm-debug.log*
+yarn-error.log*
