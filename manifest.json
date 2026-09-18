@@ -9,7 +9,8 @@
     "tabs"
   ],
   "host_permissions": [
-    "*://sv.iuh.edu.vn/*"
+    "*://sv.iuh.edu.vn/*",
+    "*://dkhp.iuh.edu.vn/*"
   ],
   "background": {
     "service_worker": "background.js"

@@ -192,7 +192,10 @@
         <nav class="sidebar-nav">
           <a href="#" id="nav-grades" class="active">📊 Kết quả học tập</a>
           <a href="#" id="nav-schedule">📅 Lịch học & Đồng bộ</a>
+          <a href="#" id="nav-suggest">📅 Lịch học dự kiến</a>
           <a href="#" id="nav-survey">📝 Khảo sát tự động</a>
+          <a href="#" id="nav-ctk">🗂️ Chương trình khung</a>
+          <a href="#" id="nav-lhp">🏛️ Lịch học phần</a>
         </nav>
 
         <div
@@ -696,6 +699,104 @@
             </button>
           </section>
         </div>
+
+        <!-- ============================================================ -->
+        <!--  TAB: CHƯƠNG TRÌNH KHUNG                                     -->
+        <!-- ============================================================ -->
+        <div id="tab-content-ctk" class="tab-pane" style="display: none">
+          <header class="topbar">
+            <div>
+              <h1>Chương trình khung</h1>
+              <p class="subtitle text-muted font-medium">
+                Toàn bộ các học phần trong chương trình đào tạo của bạn.
+              </p>
+            </div>
+            <button id="btn-refresh-ctk" class="btn-primary">
+              <span class="icon">🔄</span> Tải lại
+            </button>
+          </header>
+
+          <!-- Auth gate: hiển thị khi chưa đăng nhập dkhp.iuh.edu.vn -->
+          <div id="ctk-auth-gate" style="display: none; text-align: center; padding: 60px 20px;">
+            <p style="font-size: 48px; margin-bottom: 16px;">🔐</p>
+            <h2 style="color: var(--text-main); margin-bottom: 8px;">Yêu cầu đăng nhập</h2>
+            <p style="color: var(--text-muted); margin-bottom: 24px;">
+              Vui lòng đăng nhập vào trang DKHP trước, sau đó nhấn "Tải lại".
+            </p>
+            <a href="https://dkhp.iuh.edu.vn" target="_blank" class="btn-primary" style="text-decoration: none; padding: 10px 20px; border-radius: 8px;">
+              🌐 Mở trang DKHP
+            </a>
+          </div>
+
+          <!-- Loading state -->
+          <div id="ctk-loading" style="text-align: center; padding: 60px 20px;">
+            <p style="color: var(--text-muted); font-size: 16px;">⏳ Đang tải chương trình khung...</p>
+          </div>
+
+          <!-- Bảng chương trình khung -->
+          <section class="table-container" id="ctk-table-section" style="display: none">
+            <div style="padding: 0 0 12px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+              <span id="ctk-summary-required" style="font-size: 13px; color: var(--text-muted);"></span>
+              <span id="ctk-summary-done" style="font-size: 13px; color: var(--text-muted);"></span>
+            </div>
+            <div class="table-scroll">
+              <table class="grade-table" id="ctk-table">
+                <thead>
+                  <tr>
+                    <th>STT</th>
+                    <th>Mã MH</th>
+                    <th style="text-align: left; min-width: 200px">Tên môn học</th>
+                    <th>Mã HP</th>
+                    <th class="text-center">TC</th>
+                    <th>Tiên quyết / Trước / Song hành</th>
+                    <th class="text-center">Loại</th>
+                    <th class="text-center">Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody id="ctk-table-body">
+                  <!-- Dữ liệu sẽ được render bởi portal.js -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============================================================ -->
+        <!--  TAB: LỊCH HỌC PHẦN                                         -->
+        <!-- ============================================================ -->
+        <div id="tab-content-lhp" class="tab-pane" style="display: none">
+          <header class="topbar">
+            <div>
+              <h1>Lịch học phần</h1>
+              <p class="subtitle text-muted font-medium">
+                Danh sách các lớp học phần đang mở trong đợt đăng ký hiện tại.
+              </p>
+            </div>
+            <button id="btn-refresh-lhp" class="btn-primary">
+              <span class="icon">🔄</span> Tải lại
+            </button>
+          </header>
+
+          <!-- Auth gate -->
+          <div id="lhp-auth-gate" style="display: none; text-align: center; padding: 60px 20px;">
+            <p style="font-size: 48px; margin-bottom: 16px;">🔐</p>
+            <h2 style="color: var(--text-main); margin-bottom: 8px;">Yêu cầu đăng nhập</h2>
+            <p style="color: var(--text-muted); margin-bottom: 24px;">
+              Vui lòng đăng nhập vào trang DKHP trước, sau đó nhấn "Tải lại".
+            </p>
+            <a href="https://dkhp.iuh.edu.vn" target="_blank" class="btn-primary" style="text-decoration: none; padding: 10px 20px; border-radius: 8px;">
+              🌐 Mở trang DKHP
+            </a>
+          </div>
+
+          <!-- Placeholder - nội dung chi tiết sẽ implement sau -->
+          <div id="lhp-placeholder" style="text-align: center; padding: 60px 20px;">
+            <p style="font-size: 48px; margin-bottom: 16px;">🚧</p>
+            <h2 style="color: var(--text-main); margin-bottom: 8px;">Đang phát triển</h2>
+            <p style="color: var(--text-muted);">Tính năng xem lịch học phần sẽ sớm ra mắt.</p>
+          </div>
+        </div>
+
       </main>
     </div>
 
@@ -806,6 +907,7 @@
     </div>
 
     <script src="grade-scraper.js"></script>
+    <script src="dkhp-api.js"></script>
     <script src="portal.js"></script>
 
     <!-- Shared Portal Color Picker Panel -->

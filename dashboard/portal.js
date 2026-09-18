@@ -1203,9 +1203,13 @@ function initSettingsUI() {
   const navSchedule = $("nav-schedule");
   const navSurvey = $("nav-survey");
   const navSettings = $("nav-settings");
+  const navCtk = $("nav-ctk");
+  const navLhp = $("nav-lhp");
 
   const tabGrades = $("tab-content-grades");
   const tabSettings = $("tab-content-settings");
+  const tabCtk = $("tab-content-ctk");
+  const tabLhp = $("tab-content-lhp");
 
   const btnToggleReg = $("btn-toggle-reg");
   const regPanel = $("reg-panel");
@@ -1218,8 +1222,11 @@ function initSettingsUI() {
 
   initPortalColorPickers();
 
+  const ALL_NAVS = [navGrades, navSchedule, navSurvey, navSettings, navCtk, navLhp];
+  const ALL_TABS = [tabGrades, tabSettings, tabCtk, tabLhp];
+
   function switchActiveNav(activeId) {
-    [navGrades, navSchedule, navSurvey, navSettings].forEach((nav) => {
+    ALL_NAVS.forEach((nav) => {
       if (nav) nav.classList.remove("active");
     });
 
@@ -1228,17 +1235,23 @@ function initSettingsUI() {
   }
 
   function switchTab(tabName) {
-    if (!tabGrades || !tabSettings) return;
+    // Ẩn tất cả các tab đã biết trước
+    ALL_TABS.forEach((tab) => {
+      if (tab) tab.style.display = "none";
+    });
 
     switchActiveNav(`nav-${tabName}`);
 
     if (tabName === "grades") {
-      tabGrades.style.display = "block";
-      tabSettings.style.display = "none";
+      if (tabGrades) tabGrades.style.display = "block";
     } else if (tabName === "settings") {
-      tabGrades.style.display = "none";
-      tabSettings.style.display = "block";
+      if (tabSettings) tabSettings.style.display = "block";
       loadSettingsToForm();
+    } else if (tabName === "ctk") {
+      if (tabCtk) tabCtk.style.display = "block";
+      loadCtkTab();
+    } else if (tabName === "lhp") {
+      if (tabLhp) tabLhp.style.display = "block";
     }
   }
 
@@ -1289,6 +1302,25 @@ function initSettingsUI() {
       e.preventDefault();
       switchTab("settings");
     });
+  }
+
+  if (navCtk) {
+    navCtk.addEventListener("click", (e) => {
+      e.preventDefault();
+      switchTab("ctk");
+    });
+  }
+
+  if (navLhp) {
+    navLhp.addEventListener("click", (e) => {
+      e.preventDefault();
+      switchTab("lhp");
+    });
+  }
+
+  const btnRefreshCtk = $("btn-refresh-ctk");
+  if (btnRefreshCtk) {
+    btnRefreshCtk.addEventListener("click", () => loadCtkTab(true));
   }
 
   if (navSurvey) {
