@@ -65,7 +65,7 @@ function renderChuongTrinhKhung(data) {
 
     const hkRow = document.createElement("tr");
     hkRow.innerHTML = `
-      <td colspan="8" style="
+      <td colspan="7" style="
         background: var(--primary, #4a90e2);
         color: white;
         font-weight: 700;
@@ -74,7 +74,7 @@ function renderChuongTrinhKhung(data) {
         letter-spacing: 0.5px;
         text-transform: uppercase;
       ">
-        Hoc ky ${soHK} &mdash; Tong: ${soTcHK} TC
+        Học kỳ ${soHK} &mdash; Tổng: ${soTcHK} TC
       </td>`;
     tbody.appendChild(hkRow);
 
@@ -83,7 +83,7 @@ function renderChuongTrinhKhung(data) {
 
     if (bbList.length > 0) {
       const groupRow = document.createElement("tr");
-      groupRow.innerHTML = `<td colspan="8" style="background:rgba(255,255,255,0.05);padding:6px 16px;font-size:12px;color:var(--text-muted,#aaa);font-style:italic;">Hoc phan bat buoc</td>`;
+      groupRow.innerHTML = `<td colspan="7" style="background:rgba(255,255,255,0.05);padding:6px 16px;font-size:12px;color:var(--text-muted,#aaa);font-style:italic;font-weight:bold;">Học phần bắt buộc</td>`;
       tbody.appendChild(groupRow);
       bbList.forEach((hp, i) => {
         tbody.appendChild(buildHpRow(hp, i, true));
@@ -94,7 +94,7 @@ function renderChuongTrinhKhung(data) {
 
     if (tcList.length > 0) {
       const groupRow = document.createElement("tr");
-      groupRow.innerHTML = `<td colspan="8" style="background:rgba(255,255,255,0.05);padding:6px 16px;font-size:12px;color:var(--text-muted,#aaa);font-style:italic;">Hoc phan tu chon</td>`;
+      groupRow.innerHTML = `<td colspan="7" style="background:rgba(255,255,255,0.05);padding:6px 16px;font-size:12px;color:var(--text-muted,#aaa);font-style:italic;font-weight:bold;">Học phần tự chọn</td>`;
       tbody.appendChild(groupRow);
       tcList.forEach((hp, i) => {
         tbody.appendChild(buildHpRow(hp, i, false));
@@ -105,9 +105,9 @@ function renderChuongTrinhKhung(data) {
   });
 
   if (summaryRequired)
-    summaryRequired.textContent = `Tong yeu cau: ${data.TongSoTCYeuCau || 0} TC`;
+    summaryRequired.textContent = `Tổng yêu cầu: ${data.TongSoTCYeuCau || 0} TC`;
   if (summaryDone)
-    summaryDone.textContent = `Da dat: ${doneSubjects}/${totalSubjects} mon`;
+    summaryDone.textContent = `Đã đạt: ${doneSubjects}/${totalSubjects} môn`;
 }
 
 function buildHpRow(hp, index, isBatBuoc) {
@@ -129,17 +129,13 @@ function buildHpRow(hp, index, isBatBuoc) {
     .filter(Boolean)
     .join("<br>");
 
-  const loaiBadge = isBatBuoc
-    ? `<span style="background:rgba(252,129,129,0.2);color:#fc8181;padding:2px 7px;border-radius:99px;font-size:11px;white-space:nowrap;">Bat buoc</span>`
-    : `<span style="background:rgba(104,211,145,0.2);color:#68d391;padding:2px 7px;border-radius:99px;font-size:11px;white-space:nowrap;">Tu chon</span>`;
-
   let trangThaiBadge;
   if (isDat) {
-    trangThaiBadge = `<span style="background:rgba(104,211,145,0.2);color:#68d391;padding:2px 7px;border-radius:99px;font-size:11px;">Da dat</span>`;
+    trangThaiBadge = `<span style="background:rgba(104,211,145,0.2);color:#68d391;padding:2px 7px;border-radius:99px;font-size:11px;">✅ Đã đạt</span>`;
   } else if (isDangDK) {
-    trangThaiBadge = `<span style="background:rgba(99,179,237,0.2);color:#63b3ed;padding:2px 7px;border-radius:99px;font-size:11px;">Dang DK</span>`;
+    trangThaiBadge = `<span style="background:rgba(99,179,237,0.2);color:#63b3ed;padding:2px 7px;border-radius:99px;font-size:11px;">Đang học</span>`;
   } else {
-    trangThaiBadge = `<span style="background:rgba(160,174,192,0.15);color:#718096;padding:2px 7px;border-radius:99px;font-size:11px;">Chua hoc</span>`;
+    trangThaiBadge = `<span style="background:rgba(160,174,192,0.15);color:#718096;padding:2px 7px;border-radius:99px;font-size:11px;">Chưa học</span>`;
   }
 
   const tenMH = hp.KhongTinhDiemTBC
@@ -153,7 +149,6 @@ function buildHpRow(hp, index, isBatBuoc) {
     <td style="font-family:monospace;font-size:11px;color:var(--text-muted);">${hp.MaHocPhan || ""}</td>
     <td class="text-center" style="font-weight:600;">${hp.DVHT || ""}</td>
     <td style="font-size:12px;color:var(--text-muted);">${prerequisites}</td>
-    <td class="text-center">${loaiBadge}</td>
     <td class="text-center">${trangThaiBadge}</td>`;
 
   return tr;
