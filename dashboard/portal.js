@@ -173,6 +173,8 @@ function tinhDiemTongKet({
   }
 
   if (isThucHanhThuan) {
+    // Ràng buộc: môn thực hành thuần mà TH < 3 → tính bằng 0 (rớt)
+    if (diemTH_TongKet !== null && diemTH_TongKet < 3.0) return 0.0;
     return diemTH_TongKet;
   }
 

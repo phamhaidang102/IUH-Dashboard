@@ -10,7 +10,14 @@ let isSyncTabSpawning = false; // Cờ khóa chống mở nhiều tab cùng lúc
 // Hàm dùng chung để dọn dẹp state tồn đọng từ phiên trước
 function clearZombieStates() {
   chrome.storage.local.remove(
-    ["iuh_auto_sync_active", "runningSyncTabId"],
+    [
+      "iuh_auto_sync_active",
+      "runningSyncTabId",
+      // Dọn state khảo sát để tránh survey_agent.js chạy khi user vô tình vào trang
+      "iuh_auto_survey_running",
+      "iuh_survey_current_index",
+      "iuh_survey_urls",
+    ],
     () => {
       console.log(
         "[IUH Background] 🧹 Đã dọn dẹp các cờ hiệu chạy ngầm tồn đọng.",
@@ -164,11 +171,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // ---------------------------------------------------------
   if (request.action === "triggerAutoSurvey") {
     console.log("[IUH Background] 📝 Kích hoạt luồng khảo sát tự động.");
-    chrome.tabs.create({
-      url: "https://sv.iuh.edu.vn/sinh-vien/danh-sach-khao-sat.html",
-      active: false,
-      pinned: true,
-    });
+    // BUG FIX: Phải set flag TRƯỚC khi mở tab. Nếu không, survey_agent.js sẽ
+    // luôn return early tại dòng `if (!state.iuh_auto_survey_running) return`.
+    chrome.storage.local.set(
+      {
+        iuh_auto_survey_running: true,
+        iuh_survey_current_index: 0,
+        iuh_survey_urls: [],
+      },
+      () => {
+        chrome.tabs.create({
+          url: "https://sv.iuh.edu.vn/sinh-vien/danh-sach-khao-sat.html",
+          active: false,
+          pinned: true,
+        });
+      },
+    );
   }
 
   if (request.action === "openAndPinSurveyTab") {

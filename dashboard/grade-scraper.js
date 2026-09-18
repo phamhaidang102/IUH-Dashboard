@@ -140,6 +140,11 @@ async function fetchAndProcessGrades() {
         let isThucHanhThuan =
           diemTH_TongKet !== null && diemTK_TongKet === null && diemGK === null;
 
+        // Ràng buộc: trung bình điểm thực hành < 3 → rớt môn (ghi đè kết quả server)
+        if (diemTH_TongKet !== null && diemTH_TongKet < 3) {
+          isDat = false;
+        }
+
         if (diem10_Local !== null || diemThi === null) {
           currentSemester.subjects.push({
             maHP,
