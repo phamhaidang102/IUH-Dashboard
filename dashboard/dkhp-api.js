@@ -1,4 +1,4 @@
-﻿// dkhp-api.js
+// dkhp-api.js
 // Module fetch du lieu tu dkhp.iuh.edu.vn (session-based, khong Ghost Tab).
 
 const DKHP_BASE = "https://dkhp.iuh.edu.vn";
@@ -15,20 +15,31 @@ async function fetchChuongTrinhKhung() {
   const res = await fetch(`${DKHP_BASE}/ChuongTrinhKhung/GetChuongTrinhKhung`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    // jQuery $.ajax default Content-Type — server ASP.NET MVC mong doi format nay
+    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+    body: "",
   });
 
-  if (!res.ok) return null;
-
-  const contentType = res.headers.get("content-type") || "";
-
-  // If server returns HTML (login page) instead of JSON -> not authenticated
-  if (!contentType.includes("application/json")) {
+  if (!res.ok) {
+    console.warn("[DKHP] HTTP error:", res.status, res.statusText);
     return null;
   }
 
-  return await res.json();
+  // Doc response dang text truoc vi server co the tra JSON voi content-type text/html
+  const text = await res.text();
+
+  // Neu response chua HTML tag (trang login) => chua dang nhap
+  if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("frmLogin")) {
+    console.warn("[DKHP] Server tra ve HTML (trang login), chua dang nhap.");
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("[DKHP] Khong parse duoc JSON:", e, "Response:", text.substring(0, 200));
+    return null;
+  }
 }
 
 // =============================================================================
