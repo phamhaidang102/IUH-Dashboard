@@ -172,27 +172,56 @@ async function loadCtkTab(forceRefresh = false) {
     if (el) el.style.display = "block";
   }
 
-  if (_ctkCache && !forceRefresh) {
-    showOnly(tableSectionEl);
-    renderChuongTrinhKhung(_ctkCache);
-    return;
+  // 1. Nếu không ép refresh, thử lấy từ RAM cache hoặc Chrome Storage
+  if (!forceRefresh) {
+    if (_ctkCache) {
+      showOnly(tableSectionEl);
+      renderChuongTrinhKhung(_ctkCache);
+      return;
+    }
+
+    const stored = await new Promise((resolve) =>
+      chrome.storage.local.get(["iuh_ctk_data"], resolve)
+    );
+    if (stored.iuh_ctk_data) {
+      _ctkCache = stored.iuh_ctk_data;
+      showOnly(tableSectionEl);
+      renderChuongTrinhKhung(_ctkCache);
+      return;
+    }
   }
 
+  // 2. Fetch mới từ web trường
   showOnly(loadingEl);
 
   try {
     const data = await fetchChuongTrinhKhung();
 
     if (data === null) {
-      showOnly(authGateEl);
+      // Nếu chưa có cache cũ thì mới hiện auth gate, 
+      // nếu có cache cũ thì báo lỗi nhẹ nhưng vẫn hiện data cũ.
+      if (_ctkCache) {
+        alert("Lỗi xác thực: Vui lòng đăng nhập trang DKHP để tải dữ liệu mới nhất.");
+        showOnly(tableSectionEl);
+      } else {
+        showOnly(authGateEl);
+      }
       return;
     }
 
+    // 3. Lưu vào cache và storage
     _ctkCache = data;
+    chrome.storage.local.set({ iuh_ctk_data: data });
+    
     showOnly(tableSectionEl);
     renderChuongTrinhKhung(data);
   } catch (err) {
-    console.error("[DKHP] Loi fetch Chuong trinh khung:", err);
-    showOnly(authGateEl);
+    console.error("[DKHP] Lỗi fetch Chương trình khung:", err);
+    if (_ctkCache) {
+      alert("Lỗi mạng: Không thể lấy dữ liệu mới.");
+      showOnly(tableSectionEl);
+    } else {
+      showOnly(authGateEl);
+    }
   }
 }
