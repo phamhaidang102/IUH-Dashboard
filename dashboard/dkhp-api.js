@@ -15,8 +15,10 @@ async function fetchChuongTrinhKhung() {
   const res = await fetch(`${DKHP_BASE}/ChuongTrinhKhung/GetChuongTrinhKhung`, {
     method: "POST",
     credentials: "include",
-    // jQuery $.ajax default Content-Type — server ASP.NET MVC mong doi format nay
-    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "X-Requested-With": "XMLHttpRequest",
+    },
     body: "",
   });
 
@@ -229,7 +231,12 @@ async function _dkhpPost(path, body = "") {
   const res = await fetch(`${DKHP_BASE}${path}`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      // jQuery $.ajax tự gửi header này, ASP.NET MVC dùng để nhận biết AJAX request
+      // Nếu thiếu, server sẽ redirect về trang login thay vì trả JSON
+      "X-Requested-With": "XMLHttpRequest",
+    },
     body,
   });
   if (!res.ok) return null;
@@ -286,7 +293,7 @@ function renderLopHocPhanDaDangKy(data) {
   tbody.innerHTML = "";
 
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--text-muted);">Không có lớp học phần nào đã đăng ký.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted);">Không có lớp học phần nào đã đăng ký.</td></tr>`;
     return;
   }
 
@@ -294,8 +301,6 @@ function renderLopHocPhanDaDangKy(data) {
   if (summary) summary.textContent = `${rows.length} môn — ${tongTC} tín chỉ`;
 
   rows.forEach((row, i) => {
-    const thu = row.DaThu ? "✅" : (row.HanNop ? "" : "");
-    const trangThaiDK = row.TrangThaiDK || row.TenTrangThaiDK || "";
     const trangThaiLHP = row.TrangThaiLHP || row.TenTrangThaiLHP || "";
 
     const tr = document.createElement("tr");
@@ -308,9 +313,6 @@ function renderLopHocPhanDaDangKy(data) {
       <td style="text-align:center;font-weight:600;">${row.SoTC || row.DVHT || ""}</td>
       <td style="text-align:center;">${row.NhomTH || ""}</td>
       <td style="text-align:right;font-size:12px;">${row.HocPhi ? Number(row.HocPhi).toLocaleString("vi-VN") : ""}</td>
-      <td style="font-size:11px;color:var(--text-muted);">${row.HanNop || ""}</td>
-      <td style="text-align:center;">${thu}</td>
-      <td style="font-size:12px;">${trangThaiDK}</td>
       <td style="font-size:12px;">${row.NgayDK || ""}</td>
       <td style="font-size:12px;">${trangThaiLHP}</td>`;
     tbody.appendChild(tr);
