@@ -846,11 +846,13 @@
 
           <!-- Bảng đã ĐK -->
           <section class="table-container" id="lhp-table-section" style="display: none">
+            <div id="lhp-calendar-container" style="margin-bottom: 24px;"></div>
+            
+            <h3 style="margin: 0 0 16px 4px; font-size: 16px; color: var(--text-main);">Danh sách môn học</h3>
             <div class="table-scroll">
               <table class="grade-table" id="lhp-table">
                 <thead>
                   <tr>
-                    <th style="text-align:center; min-width:60px">Thao tác</th>
                     <th style="text-align:center">STT</th>
                     <th>Mã LHP</th>
                     <th style="text-align:left; min-width:200px">Tên môn học</th>
@@ -863,7 +865,7 @@
                   </tr>
                 </thead>
                 <tbody id="lhp-table-body">
-                  <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted);">Đang tải...</td></tr>
+                  <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">Đang tải...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -871,32 +873,7 @@
         </div>
 
         <!-- Modal Chi tiết lịch học -->
-        <div id="lhp-detail-modal">
-          <div class="lhp-modal-box">
-            <div class="lhp-modal-header">
-              <h3>Chi tiết lớp học đã đăng ký</h3>
-              <button class="lhp-modal-close" onclick="closeLhpModal()">✕</button>
-            </div>
-            <div class="lhp-modal-body">
-              <table class="grade-table" style="width:100%">
-                <thead>
-                  <tr>
-                    <th class="text-center">STT</th>
-                    <th>Lịch học</th>
-                    <th class="text-center">Nhóm</th>
-                    <th class="text-center">Phòng</th>
-                    <th class="text-center">Dãy nhà</th>
-                    <th>Cơ sở</th>
-                    <th>Giảng viên</th>
-                    <th>Thời gian</th>
-                  </tr>
-                </thead>
-                <tbody id="lhp-modal-tbody">
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        
 
       </main>
 

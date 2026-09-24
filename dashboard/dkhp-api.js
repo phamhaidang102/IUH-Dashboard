@@ -314,33 +314,6 @@ async function fetchChiTietLopHocPhan(idLHPEncrypted, maNhomTH) {
   return _dkhpPost("/DangKyHocPhan/GetChiTietLopHocPhan", body);
 }
 
-// =============================================================================
-// LHP — RENDER LAYER
-// =============================================================================
-
-/** Xây một dropdown ··· cho mỗi dòng môn học */
-function buildThaoTacCell(row, index) {
-  const idEncrypted = row.IDLopHocPhanEncrypted || row.IDLopHocPhan || "";
-  const tenMon = (row.TenMonHoc || "").replace(/'/g, "\\'");
-  const maLHP = row.MaLHP || "";
-  // Nếu server gửi về NhomTH là "1", "2" thì truyền vào, nếu không mặc định 0
-  const maNhomTH = row.NhomTH ? row.NhomTH : 0; 
-  const canHuy = !!row.ChoPhepHuyDK;
-
-  const huyBtn = canHuy
-    ? `<button class="lhp-btn-huy" data-id="${idEncrypted}" data-ten="${tenMon}" data-malHP="${maLHP}">Hủy đăng ký</button>`
-    : "";
-
-  return `
-    <div class="lhp-dropdown" id="lhp-dd-${index}">
-      <button class="lhp-dd-trigger" onclick="toggleLhpDropdown('lhp-dd-${index}')">···</button>
-      <div class="lhp-dd-menu" style="display:none;">
-        <button class="lhp-btn-xem" data-id="${idEncrypted}" data-nhom="${maNhomTH}">Xem</button>
-        ${huyBtn}
-      </div>
-    </div>`;
-}
-
 /** Render bảng Lớp học phần đã đăng ký */
 function renderLopHocPhanDaDangKy(data) {
   const tbody = document.getElementById("lhp-table-body");
@@ -351,125 +324,180 @@ function renderLopHocPhanDaDangKy(data) {
   tbody.innerHTML = "";
 
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted);">Không có lớp học phần nào đã đăng ký.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">Không có lớp học phần nào đã đăng ký.</td></tr>`;
+    // Xóa calendar nếu trống
+    const calContainer = document.getElementById("lhp-calendar-container");
+    if (calContainer) calContainer.innerHTML = "";
     return;
   }
 
-  const tongTC = rows.reduce((s, r) => s + (parseInt(r.SoTC || r.DVHT || 0)), 0);
-  if (summary) summary.textContent = `${rows.length} môn — ${tongTC} tín chỉ`;
-
+  // Cố gắng đoán tên trường nếu nó bị obfuscate đổi tên
+  let tongTC = 0;
   rows.forEach((row, i) => {
-    const trangThaiLHP = row.TrangThaiLHP || row.TenTrangThaiLHP || "";
+    // Dùng heuristics cho các trường bị thiếu
+    const tenMon = row.TenMonHoc || row.TenHocPhan || Object.values(row).find(v => typeof v === 'string' && (v.toLowerCase().includes('nhập môn') || v.includes('Web'))) || "";
+    const maLHP = row.MaLHP || row.MaLopHocPhan || row.MaLop || Object.values(row).find(v => typeof v === 'string' && /^\d{10,}$/.test(v)) || "";
+    const lhpDuKien = row.LopHocDuKien || row.LopDuKien || row.TenLopXepLich || row.MaLopXepLich || Object.values(row).find(v => typeof v === 'string' && /^DH[A-Z0-9]+$/.test(v)) || "";
+    const soTC = row.SoTC || row.DVHT || row.TinChi || row.SoTinChi || Object.values(row).find(v => typeof v === 'number' && v > 0 && v < 10) || "";
+    const nhomTH = row.NhomTH || row.NhomThucHanh || "";
+    const ngayDK = row.NgayDK || row.NgayDangKy || "";
+    const trangThaiLHP = row.TrangThaiLHP || row.TrangThaiLopHocPhan || row.TenTrangThaiLHP || "";
+    const hocPhi = row.HocPhi || Object.values(row).find(v => typeof v === 'number' && v > 1000000) || "";
+
+    tongTC += parseInt(soTC || 0);
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td style="text-align:center;padding:4px 8px;">${buildThaoTacCell(row, i)}</td>
       <td style="text-align:center;">${i + 1}</td>
-      <td style="font-family:monospace;font-size:12px;">${row.MaLHP || ""}</td>
-      <td style="text-align:left;padding-left:10px;">${row.TenMonHoc || ""}</td>
-      <td style="text-align:left;font-size:12px;">${row.LopHocDuKien || ""}</td>
-      <td style="text-align:center;font-weight:600;">${row.SoTC || row.DVHT || ""}</td>
-      <td style="text-align:center;">${row.NhomTH || ""}</td>
-      <td style="text-align:right;font-size:12px;">${row.HocPhi ? Number(row.HocPhi).toLocaleString("vi-VN") : ""}</td>
-      <td style="font-size:12px;">${row.NgayDK || ""}</td>
+      <td style="font-family:monospace;font-size:12px;">${maLHP}</td>
+      <td style="text-align:left;padding-left:10px;">${tenMon}</td>
+      <td style="text-align:left;font-size:12px;">${lhpDuKien}</td>
+      <td style="text-align:center;font-weight:600;">${soTC}</td>
+      <td style="text-align:center;">${nhomTH}</td>
+      <td style="text-align:right;font-size:12px;">${hocPhi ? Number(hocPhi).toLocaleString("vi-VN") : ""}</td>
+      <td style="font-size:12px;">${ngayDK}</td>
       <td style="font-size:12px;">${trangThaiLHP}</td>`;
     tbody.appendChild(tr);
   });
 
-  // Gắn sự kiện Xem và Hủy sau khi render xong
-  tbody.querySelectorAll(".lhp-btn-xem").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const idEnc = btn.dataset.id;
-      const nhom = btn.dataset.nhom;
-      await openChiTietModal(idEnc, nhom);
-    });
-  });
+  if (summary) summary.textContent = `${rows.length} môn — ${tongTC} tín chỉ`;
 
-  tbody.querySelectorAll(".lhp-btn-huy").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const ten = btn.dataset.ten;
-      if (confirm(`Bạn có chắc muốn hủy đăng ký môn "${ten}" không?\n⚠️ Hành động này không thể hoàn tác nếu đã qua hạn.`)) {
-        alert("Tính năng hủy đăng ký chưa được kích hoạt trong phiên bản này để đảm bảo an toàn.");
-      }
-    });
-  });
-}
-
-/** Render bảng chi tiết lịch học trong modal */
-function renderChiTietLichHoc(data) {
-  const tbody = document.getElementById("lhp-modal-tbody");
-  if (!tbody) return;
-
-  const rows = Array.isArray(data) ? data : (data.data || data.Data || []);
-  tbody.innerHTML = "";
-
-  if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted);">Không có dữ liệu lịch học.</td></tr>`;
-    return;
-  }
-
-  rows.forEach((r, i) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="text-align:center;">${i + 1}</td>
-      <td>${r.LichHoc || ""}</td>
-      <td style="text-align:center;">${r.Nhom || ""}</td>
-      <td style="text-align:center;">${r.Phong || ""}</td>
-      <td style="text-align:center;">${r.DayNha || ""}</td>
-      <td>${r.CoSo || ""}</td>
-      <td>${r.GiangVien || ""}</td>
-      <td style="font-size:12px;">${r.ThoiGian || ""}</td>`;
-    tbody.appendChild(tr);
-  });
+  // Render Calendar UI
+  renderLhpCalendar(rows);
 }
 
 // =============================================================================
-// LHP — MODAL & DROPDOWN
+// LHP — CALENDAR UI
 // =============================================================================
 
-function toggleLhpDropdown(ddId) {
-  // Đóng tất cả dropdown khác trước
-  document.querySelectorAll(".lhp-dd-menu").forEach((m) => {
-    if (m.parentElement.id !== ddId) m.style.display = "none";
-  });
-  const dd = document.getElementById(ddId);
-  if (!dd) return;
-  const menu = dd.querySelector(".lhp-dd-menu");
-  if (menu) menu.style.display = menu.style.display === "none" ? "block" : "none";
-}
+async function renderLhpCalendar(courses) {
+  const container = document.getElementById("lhp-calendar-container");
+  if (!container) return;
 
-// Đóng dropdown khi click ra ngoài
-document.addEventListener("click", (e) => {
-  if (!e.target.closest(".lhp-dropdown")) {
-    document.querySelectorAll(".lhp-dd-menu").forEach((m) => { m.style.display = "none"; });
-  }
-});
+  container.innerHTML = `
+    <h3 style="margin: 0 0 16px 4px; font-size: 16px; color: var(--text-main);">Lịch học tuần</h3>
+    <div id="lhp-calendar-grid" style="
+      display: grid;
+      grid-template-columns: 50px repeat(7, 1fr);
+      grid-template-rows: 30px repeat(15, 40px);
+      gap: 1px;
+      background: var(--border-color);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 12px;
+      position: relative;
+    ">
+      <div style="background: var(--bg-surface); grid-column: 1; grid-row: 1;"></div>
+      <div style="background: var(--bg-surface); grid-column: 2; grid-row: 1; text-align: center; font-weight: 600; padding-top: 6px;">Thứ 2</div>
+      <div style="background: var(--bg-surface); grid-column: 3; grid-row: 1; text-align: center; font-weight: 600; padding-top: 6px;">Thứ 3</div>
+      <div style="background: var(--bg-surface); grid-column: 4; grid-row: 1; text-align: center; font-weight: 600; padding-top: 6px;">Thứ 4</div>
+      <div style="background: var(--bg-surface); grid-column: 5; grid-row: 1; text-align: center; font-weight: 600; padding-top: 6px;">Thứ 5</div>
+      <div style="background: var(--bg-surface); grid-column: 6; grid-row: 1; text-align: center; font-weight: 600; padding-top: 6px;">Thứ 6</div>
+      <div style="background: var(--bg-surface); grid-column: 7; grid-row: 1; text-align: center; font-weight: 600; padding-top: 6px;">Thứ 7</div>
+      <div style="background: var(--bg-surface); grid-column: 8; grid-row: 1; text-align: center; font-weight: 600; padding-top: 6px;">Chủ nhật</div>
+    </div>
+    <div id="lhp-calendar-loading" style="text-align:center; padding: 20px; font-size: 14px; color: var(--text-muted);">
+      ⏳ Đang tải chi tiết lịch học...
+    </div>
+  `;
 
-async function openChiTietModal(idLHPEncrypted, maNhomTH) {
-  const modal = document.getElementById("lhp-detail-modal");
-  const modalBody = document.getElementById("lhp-modal-tbody");
-  const loadingRow = `<tr><td colspan="8" style="text-align:center;padding:20px;">⏳ Đang tải...</td></tr>`;
+  const grid = document.getElementById("lhp-calendar-grid");
 
-  if (!modal) return;
-  modal.style.display = "flex";
-  if (modalBody) modalBody.innerHTML = loadingRow;
+  // Vẽ các ô lưới background (15 tiết x 7 ngày + 1 cột giờ)
+  for (let t = 1; t <= 15; t++) {
+    const timeCell = document.createElement("div");
+    timeCell.style.cssText = `background: var(--bg-surface); grid-column: 1; grid-row: ${t + 1}; display: flex; align-items: center; justify-content: center; font-weight: 500; color: var(--text-muted); border-right: 1px solid var(--border-color);`;
+    timeCell.textContent = `T${t}`;
+    grid.appendChild(timeCell);
 
-  try {
-    const data = await fetchChiTietLopHocPhan(idLHPEncrypted, maNhomTH);
-    if (!data) {
-      if (modalBody) modalBody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#fc8181;">Không thể tải dữ liệu. Vui lòng kiểm tra kết nối và đăng nhập DKHP.</td></tr>`;
-      return;
+    for (let d = 2; d <= 8; d++) {
+      const cell = document.createElement("div");
+      cell.style.cssText = `background: var(--bg-card); grid-column: ${d}; grid-row: ${t + 1};`;
+      grid.appendChild(cell);
     }
-    renderChiTietLichHoc(data);
-  } catch (err) {
-    console.error("[DKHP] Lỗi fetch chi tiết LHP:", err);
-    if (modalBody) modalBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#fc8181;">Lỗi mạng.</td></tr>`;
   }
-}
 
-function closeLhpModal() {
-  const modal = document.getElementById("lhp-detail-modal");
-  if (modal) modal.style.display = "none";
+  const colors = ["#4285F4", "#DB4437", "#F4B400", "#0F9D58", "#AB47BC", "#00ACC1", "#FF7043", "#8D6E63"];
+  
+  // Lấy chi tiết song song cho tất cả môn
+  const promises = courses.map(async (row, i) => {
+    // Tìm ID
+    const idEncrypted = row.IDLopHocPhanEncrypted || row.Id || row.IDLopHocPhan || Object.values(row).find(v => typeof v === 'string' && v.endsWith('==') && v.length > 10) || "";
+    if (!idEncrypted) return null;
+
+    const maNhomTH = row.NhomTH || row.NhomThucHanh || Object.values(row).find(v => typeof v === 'number' && v < 10) || 0;
+    const tenMon = row.TenMonHoc || row.TenHocPhan || Object.values(row).find(v => typeof v === 'string' && (v.toLowerCase().includes('nhập môn') || v.includes('Web'))) || "(Không tên)";
+
+    try {
+      const detailData = await fetchChiTietLopHocPhan(idEncrypted, maNhomTH);
+      if (!detailData) return null;
+      const schedules = Array.isArray(detailData) ? detailData : (detailData.data || detailData.Data || []);
+      
+      return schedules.map(sched => {
+        // Tìm lịch học, phòng, giảng viên
+        const lichHoc = sched.LichHoc || Object.values(sched).find(v => typeof v === 'string' && v.includes('Thứ')) || "";
+        const phong = sched.Phong || sched.MaPhong || Object.values(sched).find(v => typeof v === 'string' && v.match(/^[A-Z]\d{2}\.\d{2}$/)) || "";
+        const giangVien = sched.GiangVien || sched.TenGiangVien || "";
+
+        if (!lichHoc) return null;
+        
+        // Parse: "Thứ 2 (T1-T3)" hoặc "Thứ 4 (7-9)"
+        const match = lichHoc.match(/Thứ\s*(\d+)\s*\([T]?(\d+)\s*-\s*[T]?(\d+)\)/i) || lichHoc.match(/T(\d+)\s*\([T]?(\d+)\s*-\s*[T]?(\d+)\)/i);
+        if (match) {
+          const thu = parseInt(match[1]); // 2 -> 8 (Chủ nhật)
+          const start = parseInt(match[2]);
+          const end = parseInt(match[3]);
+          const col = thu === 8 ? 8 : (thu === 1 ? 8 : thu); // Xử lý CN
+          
+          return { col, start, end, tenMon, phong, giangVien, color: colors[i % colors.length] };
+        }
+        return null;
+      }).filter(Boolean);
+    } catch (e) {
+      console.warn("[DKHP] Lỗi lấy lịch học môn:", tenMon, e);
+      return null;
+    }
+  });
+
+  const allSchedules = (await Promise.all(promises)).flat().filter(Boolean);
+
+  // Xóa loading text
+  const loading = document.getElementById("lhp-calendar-loading");
+  if (loading) loading.remove();
+
+  // Vẽ các block sự kiện lên grid
+  allSchedules.forEach(ev => {
+    const block = document.createElement("div");
+    // grid-column: ev.col; grid-row: start+1 / end+2
+    block.style.cssText = `
+      grid-column: ${ev.col};
+      grid-row: ${ev.start + 1} / ${ev.end + 2};
+      background: ${ev.color};
+      color: #fff;
+      margin: 2px;
+      border-radius: 6px;
+      padding: 6px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    `;
+    block.title = `${ev.tenMon}\nPhòng: ${ev.phong}\nGV: ${ev.giangVien}\nTiết: ${ev.start}-${ev.end}`;
+    
+    block.innerHTML = `
+      <div style="font-weight: bold; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2;">${ev.tenMon}</div>
+      <div style="font-size: 10px; opacity: 0.9;">📍 ${ev.phong}</div>
+      <div style="font-size: 10px; opacity: 0.9;">👨‍🏫 ${ev.giangVien}</div>
+    `;
+    
+    grid.appendChild(block);
+  });
+
+  if (allSchedules.length === 0) {
+    container.innerHTML += `<div style="text-align:center; padding: 20px; font-size: 14px; color: var(--text-muted);">Không tìm thấy dữ liệu lịch học hoặc môn học học online/chưa xếp lịch.</div>`;
+  }
 }
 
 // =============================================================================
