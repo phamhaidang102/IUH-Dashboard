@@ -1252,6 +1252,7 @@ function initSettingsUI() {
       loadCtkTab();
     } else if (tabName === "lhp") {
       if (tabLhp) tabLhp.style.display = "block";
+      loadLhpTab();
     }
   }
 
@@ -1321,6 +1322,11 @@ function initSettingsUI() {
   const btnRefreshCtk = $("btn-refresh-ctk");
   if (btnRefreshCtk) {
     btnRefreshCtk.addEventListener("click", () => loadCtkTab(true));
+  }
+
+  const btnRefreshLhp = $("btn-refresh-lhp");
+  if (btnRefreshLhp) {
+    btnRefreshLhp.addEventListener("click", () => loadLhpTab(true));
   }
 
   if (navSurvey) {

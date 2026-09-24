@@ -764,11 +764,62 @@
         <!--  TAB: LỊCH HỌC PHẦN                                         -->
         <!-- ============================================================ -->
         <div id="tab-content-lhp" class="tab-pane" style="display: none">
+          <style>
+            /* Dropdown ··· Thao tác */
+            .lhp-dropdown { position: relative; display: inline-block; }
+            .lhp-dd-trigger {
+              background: transparent; border: 1px solid var(--border-color);
+              color: var(--text-main); border-radius: 6px; padding: 2px 10px;
+              cursor: pointer; font-size: 16px; letter-spacing: 2px;
+              transition: background 0.15s;
+            }
+            .lhp-dd-trigger:hover { background: var(--bg-dark); }
+            .lhp-dd-menu {
+              position: absolute; left: 0; top: calc(100% + 4px);
+              background: var(--bg-card); border: 1px solid var(--border-color);
+              border-radius: 8px; overflow: hidden; z-index: 100;
+              box-shadow: 0 8px 24px rgba(0,0,0,0.35); min-width: 120px;
+            }
+            .lhp-btn-xem, .lhp-btn-huy {
+              display: block; width: 100%; text-align: left;
+              padding: 9px 14px; border: none; background: transparent;
+              cursor: pointer; font-size: 13px; color: var(--text-main);
+              transition: background 0.15s;
+            }
+            .lhp-btn-xem:hover { background: rgba(99,179,237,0.15); color: #63b3ed; }
+            .lhp-btn-huy { color: #fc8181; }
+            .lhp-btn-huy:hover { background: rgba(252,129,129,0.15); }
+            /* Modal chi tiết lịch học */
+            #lhp-detail-modal {
+              position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+              z-index: 9999; display: none; align-items: center; justify-content: center;
+            }
+            .lhp-modal-box {
+              background: var(--bg-card); border-radius: 14px;
+              border: 1px solid var(--border-color);
+              box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+              width: 90%; max-width: 820px; max-height: 80vh;
+              display: flex; flex-direction: column; overflow: hidden;
+            }
+            .lhp-modal-header {
+              display: flex; justify-content: space-between; align-items: center;
+              padding: 18px 24px; border-bottom: 1px solid var(--border-color);
+            }
+            .lhp-modal-header h3 { margin: 0; font-size: 15px; text-transform: uppercase; color: var(--primary); }
+            .lhp-modal-close {
+              background: transparent; border: none; color: var(--text-muted);
+              font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1;
+            }
+            .lhp-modal-close:hover { color: var(--text-main); }
+            .lhp-modal-body { overflow-y: auto; padding: 16px 24px 24px; }
+          </style>
+
           <header class="topbar">
             <div>
-              <h1>Lịch học phần</h1>
+              <h1>Lớp học phần đã đăng ký</h1>
               <p class="subtitle text-muted font-medium">
-                Danh sách các lớp học phần đang mở trong đợt đăng ký hiện tại.
+                Các lớp học phần đã đăng ký trong học kỳ này.
+                <span id="lhp-summary" style="margin-left: 12px; color: var(--primary); font-weight: 600;"></span>
               </p>
             </div>
             <button id="btn-refresh-lhp" class="btn-primary">
@@ -788,15 +839,70 @@
             </a>
           </div>
 
-          <!-- Placeholder - nội dung chi tiết sẽ implement sau -->
-          <div id="lhp-placeholder" style="text-align: center; padding: 60px 20px;">
-            <p style="font-size: 48px; margin-bottom: 16px;">🚧</p>
-            <h2 style="color: var(--text-main); margin-bottom: 8px;">Đang phát triển</h2>
-            <p style="color: var(--text-muted);">Tính năng xem lịch học phần sẽ sớm ra mắt.</p>
+          <!-- Loading state -->
+          <div id="lhp-loading" style="display: none; text-align: center; padding: 60px 20px;">
+            <p style="color: var(--text-muted); font-size: 16px;">⏳ Đang tải lớp học phần...</p>
+          </div>
+
+          <!-- Bảng đã ĐK -->
+          <section class="table-container" id="lhp-table-section" style="display: none">
+            <div class="table-scroll">
+              <table class="grade-table" id="lhp-table">
+                <thead>
+                  <tr>
+                    <th style="text-align:center; min-width:60px">Thao tác</th>
+                    <th style="text-align:center">STT</th>
+                    <th>Mã LHP</th>
+                    <th style="text-align:left; min-width:200px">Tên môn học</th>
+                    <th>Lớp dự kiến</th>
+                    <th class="text-center">Số TC</th>
+                    <th class="text-center">Nhóm TH</th>
+                    <th>Học phí</th>
+                    <th>Hạn nộp</th>
+                    <th class="text-center">Thu</th>
+                    <th>Trạng thái ĐK</th>
+                    <th>Ngày ĐK</th>
+                    <th>Trạng thái LHP</th>
+                  </tr>
+                </thead>
+                <tbody id="lhp-table-body">
+                  <tr><td colspan="13" style="text-align:center;padding:32px;color:var(--text-muted);">Đang tải...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- Modal Chi tiết lịch học -->
+        <div id="lhp-detail-modal">
+          <div class="lhp-modal-box">
+            <div class="lhp-modal-header">
+              <h3>Chi tiết lớp học đã đăng ký</h3>
+              <button class="lhp-modal-close" onclick="closeLhpModal()">✕</button>
+            </div>
+            <div class="lhp-modal-body">
+              <table class="grade-table" style="width:100%">
+                <thead>
+                  <tr>
+                    <th class="text-center">STT</th>
+                    <th>Lịch học</th>
+                    <th class="text-center">Nhóm</th>
+                    <th class="text-center">Phòng</th>
+                    <th class="text-center">Dãy nhà</th>
+                    <th>Cơ sở</th>
+                    <th>Giảng viên</th>
+                    <th>Thời gian</th>
+                  </tr>
+                </thead>
+                <tbody id="lhp-modal-tbody">
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
       </main>
+
     </div>
 
     <div
