@@ -285,17 +285,18 @@ async function fetchLopHocPhanDaDangKy() {
     }
 
     // Scrape idDot từ <select id="ddk">...<option value="66" selected>...</option>
-    // Server select sẵn option của đợt hiện tại, hoặc option đầu tiên
+    // Server select sẵn option của đợt hiện tại
     const ddkMatch = htmlText.match(/<select[^>]*id="ddk"[^>]*>([\s\S]*?)<\/select>/i);
     if (ddkMatch) {
       const optionsHtml = ddkMatch[1];
-      // Ưu tiên option selected
-      let optMatch = optionsHtml.match(/<option[^>]*value="([^"]+)"[^>]*selected/i);
-      if (!optMatch) {
-        // Lấy option đầu tiên nếu không có selected
-        optMatch = optionsHtml.match(/<option[^>]*value="([^"]+)"/i);
+      const optionMatches = [...optionsHtml.matchAll(/<option[^>]+value="([^"]+)"[^>]*>/gi)];
+      
+      const selectedOpt = optionMatches.find(m => m[0].toLowerCase().includes('selected'));
+      if (selectedOpt) {
+        idDot = selectedOpt[1];
+      } else if (optionMatches.length > 0) {
+        idDot = optionMatches[0][1];
       }
-      if (optMatch) idDot = optMatch[1];
     }
     console.log("[DKHP] Đã lấy idDot từ HTML:", idDot);
   } catch (e) {
