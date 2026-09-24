@@ -249,13 +249,13 @@ async function _dkhpPost(path, body = "") {
 
   console.log("[DKHP] HTTP", res.status, res.statusText, "| content-type:", res.headers.get("content-type"));
 
+  const text = await res.text();
+  console.log("[DKHP] Response body (400 ký tự đầu):", text.substring(0, 400));
+
   if (!res.ok) {
-    console.warn("[DKHP] HTTP error:", res.status);
+    console.warn("[DKHP] HTTP error:", res.status, "— body logged above");
     return null;
   }
-
-  const text = await res.text();
-  console.log("[DKHP] Response (200 ký tự đầu):", text.substring(0, 200));
 
   if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("frmLogin")) {
     console.warn("[DKHP] Server trả HTML (trang login) — chưa đăng nhập hoặc session hết hạn.");
@@ -272,7 +272,23 @@ async function _dkhpPost(path, body = "") {
 
 /** Lấy danh sách lớp học phần đã ĐK trong học kỳ này */
 async function fetchLopHocPhanDaDangKy() {
-  return _dkhpPost("/DangKyHocPhan/GetDanhSachLopHocPhanDaDangKy");
+  // Bước 1: Lấy thông tin portal (idDotDangKy, idSinhVien, v.v.)
+  // Server có thể yêu cầu idDotDangKy để trả về đúng học kỳ
+  let idDotDangKy = "";
+  try {
+    const portal = await _dkhpPost("/DangKyHocPhan/ThongTinPortal");
+    if (portal) {
+      // Thử nhiều tên field khác nhau tùy version server
+      idDotDangKy = portal.IDDotDangKy || portal.idDotDangKy || portal.Id || "";
+      console.log("[DKHP] ThongTinPortal →", portal);
+    }
+  } catch (e) {
+    console.warn("[DKHP] Không lấy được ThongTinPortal, thử gọi trực tiếp:", e);
+  }
+
+  // Bước 2: Gọi API danh sách đã ĐK (có hoặc không có idDotDangKy)
+  const body = idDotDangKy ? `idDotDangKy=${encodeURIComponent(idDotDangKy)}` : "";
+  return _dkhpPost("/DangKyHocPhan/GetDanhSachLopHocPhanDaDangKy", body);
 }
 
 /** Lấy chi tiết lịch học của 1 lớp. idLHP là giá trị encrypted trả về từ danh sách */
