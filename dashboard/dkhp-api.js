@@ -272,31 +272,45 @@ async function _dkhpPost(path, body = "") {
 
 /** Lấy danh sách lớp học phần đã ĐK trong học kỳ này */
 async function fetchLopHocPhanDaDangKy() {
-  // Bước 1: Lấy thông tin portal (idDotDangKy, idSinhVien, v.v.)
-  // Server có thể yêu cầu idDotDangKy để trả về đúng học kỳ
-  let idDotDangKy = "";
+  // Bước 1: Gọi trang chủ DKHP để scrape tham số `idDot`
+  let idDot = "";
   try {
-    const portal = await _dkhpPost("/DangKyHocPhan/ThongTinPortal");
-    if (portal) {
-      // Thử nhiều tên field khác nhau tùy version server
-      idDotDangKy = portal.IDDotDangKy || portal.idDotDangKy || portal.Id || "";
-      console.log("[DKHP] ThongTinPortal →", portal);
+    const htmlRes = await fetch(`${DKHP_BASE}/DangKyHocPhan`, { credentials: "include" });
+    if (!htmlRes.ok) throw new Error("GET /DangKyHocPhan failed");
+    const htmlText = await htmlRes.text();
+    
+    if (htmlText.includes("frmLogin")) {
+      console.warn("[DKHP] Trang DKHP yêu cầu đăng nhập.");
+      return null;
     }
+
+    // Scrape idDot từ <select id="ddk">...<option value="66" selected>...</option>
+    // Server select sẵn option của đợt hiện tại, hoặc option đầu tiên
+    const ddkMatch = htmlText.match(/<select[^>]*id="ddk"[^>]*>([\s\S]*?)<\/select>/i);
+    if (ddkMatch) {
+      const optionsHtml = ddkMatch[1];
+      // Ưu tiên option selected
+      let optMatch = optionsHtml.match(/<option[^>]*value="([^"]+)"[^>]*selected/i);
+      if (!optMatch) {
+        // Lấy option đầu tiên nếu không có selected
+        optMatch = optionsHtml.match(/<option[^>]*value="([^"]+)"/i);
+      }
+      if (optMatch) idDot = optMatch[1];
+    }
+    console.log("[DKHP] Đã lấy idDot từ HTML:", idDot);
   } catch (e) {
-    console.warn("[DKHP] Không lấy được ThongTinPortal, thử gọi trực tiếp:", e);
+    console.warn("[DKHP] Lỗi scrape HTML ĐKHP:", e);
   }
 
-  // Bước 2: Gọi API danh sách đã ĐK (có hoặc không có idDotDangKy)
-  const body = idDotDangKy ? `idDotDangKy=${encodeURIComponent(idDotDangKy)}` : "";
+  // Bước 2: Gọi API với idDot (tham số bắt buộc để server khỏi quăng 500)
+  const body = idDot ? `idDot=${encodeURIComponent(idDot)}` : "";
   return _dkhpPost("/DangKyHocPhan/GetDanhSachLopHocPhanDaDangKy", body);
 }
 
-/** Lấy chi tiết lịch học của 1 lớp. idLHP là giá trị encrypted trả về từ danh sách */
-async function fetchChiTietLopHocPhan(idLHPEncrypted) {
-  return _dkhpPost(
-    "/DangKyHocPhan/GetChiTietLopHocPhan",
-    `IDLopHocPhan=${encodeURIComponent(idLHPEncrypted)}`
-  );
+/** Lấy chi tiết lịch học của 1 lớp. */
+async function fetchChiTietLopHocPhan(idLHPEncrypted, maNhomTH) {
+  const body = `idLopHocPhan=${encodeURIComponent(idLHPEncrypted)}&maNhomTH=${encodeURIComponent(maNhomTH)}`;
+  return _dkhpPost("/DangKyHocPhan/GetChiTietLopHocPhan", body);
 }
 
 // =============================================================================
@@ -308,7 +322,9 @@ function buildThaoTacCell(row, index) {
   const idEncrypted = row.IDLopHocPhanEncrypted || row.IDLopHocPhan || "";
   const tenMon = (row.TenMonHoc || "").replace(/'/g, "\\'");
   const maLHP = row.MaLHP || "";
-  const canHuy = !!row.ChoPhepHuyDK; // server gửi flag này khi còn trong thời hạn hủy
+  // Nếu server gửi về NhomTH là "1", "2" thì truyền vào, nếu không mặc định 0
+  const maNhomTH = row.NhomTH ? row.NhomTH : 0; 
+  const canHuy = !!row.ChoPhepHuyDK;
 
   const huyBtn = canHuy
     ? `<button class="lhp-btn-huy" data-id="${idEncrypted}" data-ten="${tenMon}" data-malHP="${maLHP}">Hủy đăng ký</button>`
@@ -318,7 +334,7 @@ function buildThaoTacCell(row, index) {
     <div class="lhp-dropdown" id="lhp-dd-${index}">
       <button class="lhp-dd-trigger" onclick="toggleLhpDropdown('lhp-dd-${index}')">···</button>
       <div class="lhp-dd-menu" style="display:none;">
-        <button class="lhp-btn-xem" data-id="${idEncrypted}">Xem</button>
+        <button class="lhp-btn-xem" data-id="${idEncrypted}" data-nhom="${maNhomTH}">Xem</button>
         ${huyBtn}
       </div>
     </div>`;
@@ -363,7 +379,8 @@ function renderLopHocPhanDaDangKy(data) {
   tbody.querySelectorAll(".lhp-btn-xem").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const idEnc = btn.dataset.id;
-      await openChiTietModal(idEnc);
+      const nhom = btn.dataset.nhom;
+      await openChiTietModal(idEnc, nhom);
     });
   });
 
@@ -427,7 +444,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
-async function openChiTietModal(idLHPEncrypted) {
+async function openChiTietModal(idLHPEncrypted, maNhomTH) {
   const modal = document.getElementById("lhp-detail-modal");
   const modalBody = document.getElementById("lhp-modal-tbody");
   const loadingRow = `<tr><td colspan="8" style="text-align:center;padding:20px;">⏳ Đang tải...</td></tr>`;
@@ -437,7 +454,7 @@ async function openChiTietModal(idLHPEncrypted) {
   if (modalBody) modalBody.innerHTML = loadingRow;
 
   try {
-    const data = await fetchChiTietLopHocPhan(idLHPEncrypted);
+    const data = await fetchChiTietLopHocPhan(idLHPEncrypted, maNhomTH);
     if (!data) {
       if (modalBody) modalBody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#fc8181;">Không thể tải dữ liệu. Vui lòng kiểm tra kết nối và đăng nhập DKHP.</td></tr>`;
       return;
