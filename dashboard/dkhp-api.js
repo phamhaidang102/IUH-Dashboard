@@ -228,21 +228,46 @@ async function loadCtkTab(forceRefresh = false) {
 // =============================================================================
 
 async function _dkhpPost(path, body = "") {
-  const res = await fetch(`${DKHP_BASE}${path}`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      // jQuery $.ajax tự gửi header này, ASP.NET MVC dùng để nhận biết AJAX request
-      // Nếu thiếu, server sẽ redirect về trang login thay vì trả JSON
-      "X-Requested-With": "XMLHttpRequest",
-    },
-    body,
-  });
-  if (!res.ok) return null;
+  const url = `${DKHP_BASE}${path}`;
+  console.log("[DKHP] POST →", url, "| body:", body || "(empty)");
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body,
+    });
+  } catch (networkErr) {
+    console.error("[DKHP] Lỗi mạng (CORS hoặc mất kết nối):", networkErr);
+    return null;
+  }
+
+  console.log("[DKHP] HTTP", res.status, res.statusText, "| content-type:", res.headers.get("content-type"));
+
+  if (!res.ok) {
+    console.warn("[DKHP] HTTP error:", res.status);
+    return null;
+  }
+
   const text = await res.text();
-  if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("frmLogin")) return null;
-  try { return JSON.parse(text); } catch { return null; }
+  console.log("[DKHP] Response (200 ký tự đầu):", text.substring(0, 200));
+
+  if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("frmLogin")) {
+    console.warn("[DKHP] Server trả HTML (trang login) — chưa đăng nhập hoặc session hết hạn.");
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("[DKHP] Không parse được JSON:", e);
+    return null;
+  }
 }
 
 /** Lấy danh sách lớp học phần đã ĐK trong học kỳ này */
