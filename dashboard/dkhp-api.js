@@ -275,7 +275,12 @@ async function fetchLopHocPhanDaDangKy() {
   // Bước 1: Gọi trang chủ DKHP để scrape tham số `idDot`
   let idDot = "";
   try {
-    const htmlRes = await fetch(`${DKHP_BASE}/DangKyHocPhan`, { credentials: "include" });
+    const htmlRes = await fetch(`${DKHP_BASE}/DangKyHocPhan`, { 
+      credentials: "include",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    });
     if (!htmlRes.ok) throw new Error("GET /DangKyHocPhan failed");
     const htmlText = await htmlRes.text();
     
@@ -422,49 +427,47 @@ async function renderLhpCalendar(courses) {
 
   const colors = ["#4285F4", "#DB4437", "#F4B400", "#0F9D58", "#AB47BC", "#00ACC1", "#FF7043", "#8D6E63"];
   
-  // Lấy chi tiết song song cho tất cả môn
-  const promises = courses.map(async (row, i) => {
-    // Dùng đúng key từ server
+  // Lấy chi tiết TUẦN TỰ (Sequential) để tránh lỗi ASP.NET Session lock/kick
+  const allSchedules = [];
+  
+  for (let i = 0; i < courses.length; i++) {
+    const row = courses[i];
     const idEncrypted = row.IdLopHocPhanString || row.IDLopHocPhanEncrypted || "";
-    if (!idEncrypted) return null;
+    if (!idEncrypted) continue;
 
     const maNhomTH = row.MaNhomThucHanh != null ? row.MaNhomThucHanh : 0;
     const tenMon = row.TenMonHoc || "(Không tên)";
 
     try {
       const detailData = await fetchChiTietLopHocPhan(idEncrypted, maNhomTH);
-      if (!detailData) return null;
+      if (!detailData) continue;
 
-      // Server trả về { LopHoc: {...}, ListLichHoc: [...], DSNhomThucHanh: [...] }
       const schedules = detailData.ListLichHoc || (Array.isArray(detailData) ? detailData : []);
       
-      return schedules.map(sched => {
+      const parsedSchedules = schedules.map(sched => {
         const lichHoc = sched.LichHoc || "";
         const phong = sched.Phong || "";
         const giangVien = sched.GiangVien || "";
 
         if (!lichHoc) return null;
         
-        // Parse: "LT -  Thứ 2 (T10 -> T12)" hoặc " Thứ 3 (T1 -> T3)"
-        // Dấu phân cách tiết là -> hoặc -
         const match = lichHoc.match(/Thứ\s*(\d+)\s*\(\s*T?(\d+)\s*-+>?\s*T?(\d+)\s*\)/i);
         if (match) {
-          const thu = parseInt(match[1]); // 2-7 (Thứ 2 đến Thứ 7), 8 = CN
+          const thu = parseInt(match[1]);
           const start = parseInt(match[2]);
           const end = parseInt(match[3]);
-          const col = thu; // Thứ 2 = col 2, Thứ 7 = col 7, CN (8) = col 8
+          const col = thu;
           
           return { col, start, end, tenMon, phong, giangVien, color: colors[i % colors.length], isLT: sched.IsLyThuyet };
         }
         return null;
       }).filter(Boolean);
+      
+      allSchedules.push(...parsedSchedules);
     } catch (e) {
       console.warn("[DKHP] Lỗi lấy lịch học môn:", tenMon, e);
-      return null;
     }
-  });
-
-  const allSchedules = (await Promise.all(promises)).flat().filter(Boolean);
+  }
 
   // Xóa loading text
   const loading = document.getElementById("lhp-calendar-loading");
