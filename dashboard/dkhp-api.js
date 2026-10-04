@@ -339,8 +339,18 @@ function renderLopHocPhanDaDangKy(data) {
     const maLHP = row.MaLHP || row.MaLopHocPhan || row.MaLop || Object.values(row).find(v => typeof v === 'string' && /^\d{10,}$/.test(v)) || "";
     const lhpDuKien = row.LopHocDuKien || row.LopDuKien || row.TenLopXepLich || row.MaLopXepLich || Object.values(row).find(v => typeof v === 'string' && /^DH[A-Z0-9]+$/.test(v)) || "";
     const soTC = row.SoTC || row.DVHT || row.TinChi || row.SoTinChi || Object.values(row).find(v => typeof v === 'number' && v > 0 && v < 10) || "";
-    const nhomTH = row.NhomTH || row.NhomThucHanh || "";
-    const ngayDK = row.NgayDK || row.NgayDangKy || "";
+    
+    // NhomTH: Hạn chế dùng heuristic number vì dễ trùng với Số TC. Chỉ tìm exact property hoặc chuỗi "1", "2".
+    let nhomTH = row.NhomTH ?? row.NhomThucHanh ?? row.Nhom ?? "";
+    if (nhomTH === null || nhomTH === 0) nhomTH = "";
+
+    // Parse ASP.NET Date format: /Date(1728575118123)/
+    let ngayDK = row.NgayDK || row.NgayDangKy || "";
+    if (typeof ngayDK === 'string' && ngayDK.includes('/Date(')) {
+      const ms = parseInt(ngayDK.match(/\d+/)[0], 10);
+      ngayDK = new Date(ms).toLocaleDateString("vi-VN");
+    }
+
     const trangThaiLHP = row.TrangThaiLHP || row.TrangThaiLopHocPhan || row.TenTrangThaiLHP || "";
     const hocPhi = row.HocPhi || Object.values(row).find(v => typeof v === 'number' && v > 1000000) || "";
 
@@ -426,12 +436,18 @@ async function renderLhpCalendar(courses) {
     const idEncrypted = row.IDLopHocPhanEncrypted || row.Id || row.IDLopHocPhan || Object.values(row).find(v => typeof v === 'string' && v.endsWith('==') && v.length > 10) || "";
     if (!idEncrypted) return null;
 
-    const maNhomTH = row.NhomTH || row.NhomThucHanh || Object.values(row).find(v => typeof v === 'number' && v < 10) || 0;
+    let maNhomTH = row.NhomTH ?? row.NhomThucHanh ?? row.Nhom ?? 0;
+    if (maNhomTH === "") maNhomTH = 0;
+    
     const tenMon = row.TenMonHoc || row.TenHocPhan || Object.values(row).find(v => typeof v === 'string' && (v.toLowerCase().includes('nhập môn') || v.includes('Web'))) || "(Không tên)";
 
     try {
       const detailData = await fetchChiTietLopHocPhan(idEncrypted, maNhomTH);
-      if (!detailData) return null;
+      if (!detailData) {
+        console.warn(`[DKHP] Không lấy được lịch học cho môn: ${tenMon}. (Mã ID: ${idEncrypted}, NhomTH: ${maNhomTH})`);
+        return null;
+      }
+      
       const schedules = Array.isArray(detailData) ? detailData : (detailData.data || detailData.Data || []);
       
       return schedules.map(sched => {
