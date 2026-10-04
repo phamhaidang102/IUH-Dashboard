@@ -323,47 +323,42 @@ function renderLopHocPhanDaDangKy(data) {
   const rows = Array.isArray(data) ? data : (data.data || data.Data || []);
   tbody.innerHTML = "";
 
-  // DEBUG: Log raw data and first row keys
-  console.log("[DKHP][DEBUG] GetDanhSachLopHPDDK raw data:", data);
-  if (rows.length > 0) {
-    console.log("[DKHP][DEBUG] First row keys:", Object.keys(rows[0]));
-    console.log("[DKHP][DEBUG] First row full:", JSON.stringify(rows[0], null, 2));
-  }
-
   if (rows.length === 0) {
     tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">Không có lớp học phần nào đã đăng ký.</td></tr>`;
-    // Xóa calendar nếu trống
     const calContainer = document.getElementById("lhp-calendar-container");
     if (calContainer) calContainer.innerHTML = "";
     return;
   }
 
-  // Cố gắng đoán tên trường nếu nó bị obfuscate đổi tên
   let tongTC = 0;
   rows.forEach((row, i) => {
-    // Dùng heuristics cho các trường bị thiếu
-    const tenMon = row.TenMonHoc || row.TenHocPhan || Object.values(row).find(v => typeof v === 'string' && (v.toLowerCase().includes('nhập môn') || v.includes('Web'))) || "";
-    const maLHP = row.MaLHP || row.MaLopHocPhan || row.MaLop || Object.values(row).find(v => typeof v === 'string' && /^\d{10,}$/.test(v)) || "";
-    const lhpDuKien = row.LopHocDuKien || row.LopDuKien || row.TenLopXepLich || row.MaLopXepLich || Object.values(row).find(v => typeof v === 'string' && /^DH[A-Z0-9]+$/.test(v)) || "";
-    const soTC = row.SoTC || row.DVHT || row.TinChi || row.SoTinChi || Object.values(row).find(v => typeof v === 'number' && v > 0 && v < 10) || "";
-    const nhomTH = row.NhomTH || row.NhomThucHanh || "";
-    const ngayDK = row.NgayDK || row.NgayDangKy || "";
-    const trangThaiLHP = row.TrangThaiLHP || row.TrangThaiLopHocPhan || row.TenTrangThaiLHP || "";
-    const hocPhi = row.HocPhi || Object.values(row).find(v => typeof v === 'number' && v > 1000000) || "";
-
+    const soTC = row.SoTinChi || row.SoTC || row.DVHT || 0;
     tongTC += parseInt(soTC || 0);
+
+    // Parse .NET /Date(...)/ format
+    let ngayDK = "";
+    const rawDate = row.NgayDangKy || row.NgayDK || "";
+    if (typeof rawDate === "string") {
+      const dateMatch = rawDate.match(/\/Date\((\d+)\)\//);
+      if (dateMatch) {
+        const d = new Date(parseInt(dateMatch[1]));
+        ngayDK = `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+      } else {
+        ngayDK = rawDate;
+      }
+    }
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td style="text-align:center;">${i + 1}</td>
-      <td style="font-family:monospace;font-size:12px;">${maLHP}</td>
-      <td style="text-align:left;padding-left:10px;">${tenMon}</td>
-      <td style="text-align:left;font-size:12px;">${lhpDuKien}</td>
+      <td style="font-family:monospace;font-size:12px;">${row.MaLopHocPhan || row.MaLHP || ""}</td>
+      <td style="text-align:left;padding-left:10px;">${row.TenMonHoc || ""}</td>
+      <td style="text-align:left;font-size:12px;">${row.LopDuKien || row.LopHocDuKien || ""}</td>
       <td style="text-align:center;font-weight:600;">${soTC}</td>
-      <td style="text-align:center;">${nhomTH}</td>
-      <td style="text-align:right;font-size:12px;">${hocPhi ? Number(hocPhi).toLocaleString("vi-VN") : ""}</td>
+      <td style="text-align:center;">${row.MaNhomThucHanh != null ? row.MaNhomThucHanh : ""}</td>
+      <td style="text-align:right;font-size:12px;">${row.HocPhi ? Number(row.HocPhi).toLocaleString("vi-VN") : ""}</td>
       <td style="font-size:12px;">${ngayDK}</td>
-      <td style="font-size:12px;">${trangThaiLHP}</td>`;
+      <td style="font-size:12px;">${row.TrangThaiLopHocPhan || row.TrangThaiLHP || ""}</td>`;
     tbody.appendChild(tr);
   });
 
@@ -429,50 +424,37 @@ async function renderLhpCalendar(courses) {
   
   // Lấy chi tiết song song cho tất cả môn
   const promises = courses.map(async (row, i) => {
-    // Tìm ID
-    const idEncrypted = row.IDLopHocPhanEncrypted || row.Id || row.IDLopHocPhan || Object.values(row).find(v => typeof v === 'string' && v.endsWith('==') && v.length > 10) || "";
+    // Dùng đúng key từ server
+    const idEncrypted = row.IdLopHocPhanString || row.IDLopHocPhanEncrypted || "";
     if (!idEncrypted) return null;
 
-    const maNhomTH = row.NhomTH || row.NhomThucHanh || Object.values(row).find(v => typeof v === 'number' && v < 10) || 0;
-    const tenMon = row.TenMonHoc || row.TenHocPhan || Object.values(row).find(v => typeof v === 'string' && (v.toLowerCase().includes('nhập môn') || v.includes('Web'))) || "(Không tên)";
+    const maNhomTH = row.MaNhomThucHanh != null ? row.MaNhomThucHanh : 0;
+    const tenMon = row.TenMonHoc || "(Không tên)";
 
     try {
       const detailData = await fetchChiTietLopHocPhan(idEncrypted, maNhomTH);
-      console.log(`[DKHP][DEBUG] Chi tiết LHP "${tenMon}": idEnc=${idEncrypted}, nhom=${maNhomTH}, response:`, detailData);
-      if (detailData && !Array.isArray(detailData)) {
-        console.log("[DKHP][DEBUG] Chi tiết LHP keys:", Object.keys(detailData));
-        // If it has a nested array, try to find it
-        for (const k of Object.keys(detailData)) {
-          if (Array.isArray(detailData[k]) && detailData[k].length > 0) {
-            console.log(`[DKHP][DEBUG] Found array in key "${k}", first item keys:`, Object.keys(detailData[k][0]));
-            console.log(`[DKHP][DEBUG] First schedule item:`, JSON.stringify(detailData[k][0], null, 2));
-          }
-        }
-      }
       if (!detailData) return null;
-      const schedules = Array.isArray(detailData) ? detailData : (detailData.data || detailData.Data || detailData.ListLichHoc || []);
-      if (Array.isArray(detailData) && detailData.length > 0) {
-        console.log("[DKHP][DEBUG] schedules[0] keys:", Object.keys(detailData[0]));
-        console.log("[DKHP][DEBUG] schedules[0] full:", JSON.stringify(detailData[0], null, 2));
-      }
+
+      // Server trả về { LopHoc: {...}, ListLichHoc: [...], DSNhomThucHanh: [...] }
+      const schedules = detailData.ListLichHoc || (Array.isArray(detailData) ? detailData : []);
       
       return schedules.map(sched => {
-        // Tìm lịch học, phòng, giảng viên
-        const lichHoc = sched.LichHoc || Object.values(sched).find(v => typeof v === 'string' && v.includes('Thứ')) || "";
-        const phong = sched.Phong || sched.MaPhong || Object.values(sched).find(v => typeof v === 'string' && v.match(/^[A-Z]\d{2}\.\d{2}$/)) || "";
-        const giangVien = sched.GiangVien || sched.TenGiangVien || "";
+        const lichHoc = sched.LichHoc || "";
+        const phong = sched.Phong || "";
+        const giangVien = sched.GiangVien || "";
 
         if (!lichHoc) return null;
         
-        // Parse: "Thứ 2 (T1-T3)" hoặc "Thứ 4 (7-9)"
-        const match = lichHoc.match(/Thứ\s*(\d+)\s*\([T]?(\d+)\s*-\s*[T]?(\d+)\)/i) || lichHoc.match(/T(\d+)\s*\([T]?(\d+)\s*-\s*[T]?(\d+)\)/i);
+        // Parse: "LT -  Thứ 2 (T10 -> T12)" hoặc " Thứ 3 (T1 -> T3)"
+        // Dấu phân cách tiết là -> hoặc -
+        const match = lichHoc.match(/Thứ\s*(\d+)\s*\(\s*T?(\d+)\s*-+>?\s*T?(\d+)\s*\)/i);
         if (match) {
-          const thu = parseInt(match[1]); // 2 -> 8 (Chủ nhật)
+          const thu = parseInt(match[1]); // 2-7 (Thứ 2 đến Thứ 7), 8 = CN
           const start = parseInt(match[2]);
           const end = parseInt(match[3]);
-          const col = thu === 8 ? 8 : (thu === 1 ? 8 : thu); // Xử lý CN
+          const col = thu; // Thứ 2 = col 2, Thứ 7 = col 7, CN (8) = col 8
           
-          return { col, start, end, tenMon, phong, giangVien, color: colors[i % colors.length] };
+          return { col, start, end, tenMon, phong, giangVien, color: colors[i % colors.length], isLT: sched.IsLyThuyet };
         }
         return null;
       }).filter(Boolean);
@@ -491,7 +473,6 @@ async function renderLhpCalendar(courses) {
   // Vẽ các block sự kiện lên grid
   allSchedules.forEach(ev => {
     const block = document.createElement("div");
-    // grid-column: ev.col; grid-row: start+1 / end+2
     block.style.cssText = `
       grid-column: ${ev.col};
       grid-row: ${ev.start + 1} / ${ev.end + 2};
@@ -506,12 +487,13 @@ async function renderLhpCalendar(courses) {
       flex-direction: column;
       z-index: 10;
     `;
-    block.title = `${ev.tenMon}\nPhòng: ${ev.phong}\nGV: ${ev.giangVien}\nTiết: ${ev.start}-${ev.end}`;
+    const loai = ev.isLT ? "LT" : "TH";
+    block.title = `${ev.tenMon} (${loai})\nPhòng: ${ev.phong}\nGV: ${ev.giangVien}\nTiết: ${ev.start}-${ev.end}`;
     
     block.innerHTML = `
-      <div style="font-weight: bold; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2;">${ev.tenMon}</div>
-      <div style="font-size: 10px; opacity: 0.9;">📍 ${ev.phong}</div>
-      <div style="font-size: 10px; opacity: 0.9;">👨‍🏫 ${ev.giangVien}</div>
+      <div style="font-weight: bold; margin-bottom: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; font-size: 11px;">${ev.tenMon}</div>
+      <div style="font-size: 10px; opacity: 0.85;">📍 ${ev.phong}</div>
+      <div style="font-size: 10px; opacity: 0.85; margin-top: 1px;">${loai === "TH" ? "🔬" : "📖"} ${loai}</div>
     `;
     
     grid.appendChild(block);
