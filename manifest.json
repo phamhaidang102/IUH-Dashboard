@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "IUH Dashboard",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Giải pháp thay thế IUH Dashboard",
   "permissions": [
     "storage",
@@ -9,7 +9,8 @@
     "tabs"
   ],
   "host_permissions": [
-    "*://sv.iuh.edu.vn/*"
+    "*://sv.iuh.edu.vn/*",
+    "*://dkhp.iuh.edu.vn/*"
   ],
   "background": {
     "service_worker": "background.js"
