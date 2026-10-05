@@ -105,6 +105,8 @@ iuh-calendar-sync/
 │   ├── grade-scraper.js
 │   ├── portal.css
 │   ├── portal.html
+|   ├── grade-scraper.js
+|   ├── dkhp-api.js
 │   └── portal.js
 ├── GAS/
 │   └── Code.js
