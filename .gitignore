@@ -1,1 +1,18 @@
-﻿_ignored_files/
+_ignored_files/
+.ignored_files/
+ignored_files/
+
+# Graphify outputs & cache
+graphify-out/
+.graphify/
+
+# Archify outputs & cache
+archify-out/
+.archify/
+*.archify.html
+*.archify.svg
+
+# AI Agent Skills, Rules & Lock files
+.agents/
+.skills/
+skills-lock.json

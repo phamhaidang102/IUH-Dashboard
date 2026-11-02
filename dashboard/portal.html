@@ -179,6 +179,11 @@
         color: var(--text-main);
         outline: none;
       }
+      #ctk-search-input:focus,
+      #lhp-semester-select:focus {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+      }
       .pc-hex-input:focus {
         border-color: var(--primary);
       }
@@ -192,10 +197,9 @@
         <nav class="sidebar-nav">
           <a href="#" id="nav-grades" class="active">📊 Kết quả học tập</a>
           <a href="#" id="nav-schedule">📅 Lịch học & Đồng bộ</a>
-          <a href="#" id="nav-suggest">📅 Lịch học dự kiến</a>
           <a href="#" id="nav-survey">📝 Khảo sát tự động</a>
           <a href="#" id="nav-ctk">🗂️ Chương trình khung</a>
-          <a href="#" id="nav-lhp">🏛️ Lịch học phần</a>
+          <a href="#" id="nav-lhp">📅 Lịch học dự kiến</a>
         </nav>
 
         <div
@@ -735,9 +739,49 @@
 
           <!-- Bảng chương trình khung -->
           <section class="table-container" id="ctk-table-section" style="display: none">
-            <div style="padding: 0 0 12px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-              <span id="ctk-summary-required" style="font-size: 13px; color: var(--text-muted);"></span>
-              <span id="ctk-summary-done" style="font-size: 13px; color: var(--text-muted);"></span>
+            <div style="padding: 0 0 16px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                <span id="ctk-summary-required" style="font-size: 13px; color: var(--text-muted);"></span>
+                <span id="ctk-summary-done" style="font-size: 13px; color: var(--text-muted);"></span>
+                <span id="ctk-search-count" style="font-size: 13px; color: var(--primary); font-weight: 600; display: none;"></span>
+              </div>
+              <div style="position: relative; width: 100%; max-width: 340px;">
+                <input
+                  type="text"
+                  id="ctk-search-input"
+                  placeholder="🔍 Tìm kiếm môn học, mã MH, mã HP..."
+                  style="
+                    width: 100%;
+                    padding: 8px 32px 8px 12px;
+                    border-radius: 8px;
+                    border: 1px solid var(--border-color);
+                    background: var(--bg-dark);
+                    color: var(--text-main);
+                    font-size: 13px;
+                    outline: none;
+                    box-sizing: border-box;
+                    transition: border-color 0.2s, box-shadow 0.2s;
+                  "
+                />
+                <button
+                  id="ctk-search-clear"
+                  style="
+                    position: absolute;
+                    right: 8px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    background: transparent;
+                    border: none;
+                    color: var(--text-muted);
+                    font-size: 14px;
+                    cursor: pointer;
+                    display: none;
+                    padding: 2px 4px;
+                    line-height: 1;
+                  "
+                  title="Xóa tìm kiếm"
+                >✕</button>
+              </div>
             </div>
             <div class="table-scroll">
               <table class="grade-table" id="ctk-table">
@@ -748,7 +792,8 @@
                     <th style="text-align: left; min-width: 200px">Tên môn học</th>
                     <th>Mã HP</th>
                     <th class="text-center">TC</th>
-                    <th>Tiên quyết / Trước / Song hành</th>
+                    <th>Tiên quyết <span style="color:#fc8181">(b)</span> / Trước <span style="color:#f6ad55">(a)</span> / Song hành <span style="color:#68d391">(c)</span></th>
+                    <th title="Môn này là học phần Tiên quyết (b) / Học trước (a) / Song hành (c) của những môn nào?">Là ĐK <span style="color:#fc8181">(b)</span> / <span style="color:#f6ad55">(a)</span> / <span style="color:#68d391">(c)</span> của môn</th>
                     <th class="text-center">Trạng thái</th>
                   </tr>
                 </thead>
@@ -761,7 +806,7 @@
         </div>
 
         <!-- ============================================================ -->
-        <!--  TAB: LỊCH HỌC PHẦN                                         -->
+        <!--  TAB: LỊCH HỌC DỰ KIẾN (LHP)                                -->
         <!-- ============================================================ -->
         <div id="tab-content-lhp" class="tab-pane" style="display: none">
           <style>
@@ -816,15 +861,36 @@
 
           <header class="topbar">
             <div>
-              <h1>Lớp học phần đã đăng ký</h1>
+              <h1>Lịch học dự kiến</h1>
               <p class="subtitle text-muted font-medium">
-                Các lớp học phần đã đăng ký trong học kỳ này.
+                Các lớp học phần và lịch học dự kiến trong học kỳ này.
                 <span id="lhp-summary" style="margin-left: 12px; color: var(--primary); font-weight: 600;"></span>
               </p>
             </div>
-            <button id="btn-refresh-lhp" class="btn-primary">
-              <span class="icon">🔄</span> Tải lại
-            </button>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <select
+                id="lhp-semester-select"
+                title="Chọn đợt đăng ký / học kỳ"
+                style="
+                  background: var(--bg-dark);
+                  color: var(--text-main);
+                  border: 1px solid var(--border-color);
+                  padding: 8px 12px;
+                  border-radius: 8px;
+                  font-size: 13px;
+                  font-weight: 500;
+                  outline: none;
+                  cursor: pointer;
+                  min-width: 190px;
+                  transition: border-color 0.2s, box-shadow 0.2s;
+                "
+              >
+                <option value="">⏳ Đang tải học kỳ...</option>
+              </select>
+              <button id="btn-refresh-lhp" class="btn-primary">
+                <span class="icon">🔄</span> Tải lại
+              </button>
+            </div>
           </header>
 
           <!-- Auth gate -->
@@ -841,7 +907,7 @@
 
           <!-- Loading state -->
           <div id="lhp-loading" style="display: none; text-align: center; padding: 60px 20px;">
-            <p style="color: var(--text-muted); font-size: 16px;">⏳ Đang tải lớp học phần...</p>
+            <p style="color: var(--text-muted); font-size: 16px;">⏳ Đang tải lịch học dự kiến...</p>
           </div>
 
           <!-- Bảng đã ĐK -->

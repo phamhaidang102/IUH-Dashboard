@@ -1326,7 +1326,11 @@ function initSettingsUI() {
 
   const btnRefreshLhp = $("btn-refresh-lhp");
   if (btnRefreshLhp) {
-    btnRefreshLhp.addEventListener("click", () => loadLhpTab(true));
+    btnRefreshLhp.addEventListener("click", () => {
+      const selectEl = $("lhp-semester-select");
+      const currentDot = selectEl && selectEl.value ? selectEl.value : null;
+      loadLhpTab(true, currentDot);
+    });
   }
 
   if (navSurvey) {
