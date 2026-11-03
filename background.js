@@ -287,6 +287,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // 3. BẮT SỰ KIỆN KHI CLICK VÀO ICON CỦA EXTENSION TRÊN THANH TOOLBAR
 // ==============================================================================
 chrome.action.onClicked.addListener((tab) => {
-  // Mở trang SPA Dashboard mới thay vì trang options cũ
-  chrome.tabs.create({ url: chrome.runtime.getURL("dashboard/portal.html") });
+  // Mở trang SPA Dashboard mới thay vì trang options cũ và đặt mức zoom mặc định 75%
+  chrome.tabs.create(
+    { url: chrome.runtime.getURL("dashboard/portal.html") },
+    (newTab) => {
+      if (newTab && newTab.id) {
+        chrome.tabs.setZoom(newTab.id, 0.75);
+      }
+    },
+  );
 });

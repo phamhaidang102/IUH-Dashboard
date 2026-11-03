@@ -306,6 +306,15 @@
     const inputElement = document.querySelector("#Captcha");
     if (!imgElement || !inputElement) return;
 
+    // Đảm bảo ảnh CAPTCHA đã tải xong trước khi đưa vào Canvas
+    if (!imgElement.complete || imgElement.naturalWidth === 0) {
+      await new Promise((resolve) => {
+        imgElement.addEventListener("load", resolve, { once: true });
+        imgElement.addEventListener("error", resolve, { once: true });
+        setTimeout(resolve, 1500);
+      });
+    }
+
     try {
       const tensor = preprocessCaptcha(imgElement);
       const prediction = iuhModel.predict(tensor);
@@ -363,8 +372,8 @@
       document.documentElement.getAttribute("data-iuh-auto-sync-active") ===
       "true";
 
-    // Vì hệ thống hiện tại đã 100% tự động, nếu cờ hiệu bật, ta sẽ chạy logic ngầm
-    if (isAutoSync) {
+    // Vì hệ thống hiện tại đã 100% tự động, nếu cờ hiệu bật trên sv.iuh.edu.vn, ta sẽ chạy logic ngầm
+    if (isAutoSync && window.location.hostname.includes("sv.iuh.edu.vn")) {
       const currentUrl = window.location.href.toLowerCase();
 
       if (
