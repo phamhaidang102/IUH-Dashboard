@@ -30,6 +30,10 @@
     {
       "matches": ["*://sv.iuh.edu.vn/*"],
       "js": ["survey_agent.js"]
+    },
+    {
+      "matches": ["*://dkhp.iuh.edu.vn/DangKyHocPhan*"],
+      "js": ["dkhp_agent.js"]
     }
   ],
   "web_accessible_resources": [
