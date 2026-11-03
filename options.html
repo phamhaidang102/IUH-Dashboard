@@ -1,290 +1,603 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>IUH Calendar Sync - Dashboard Cấu Hình</title>
-  <style>
-    body { font-family: 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6; margin: 0; padding: 40px; color: #333; }
-    .container { max-width: 750px; background: white; margin: 0 auto; padding: 30px; border-radius: 12px; box-shadow: 0 4px 25px rgba(0,0,0,0.08); }
-    h2 { text-align: center; color: #b71a1a; margin-top: 0; padding-bottom: 15px; border-bottom: 2px solid #f3f4f6; }
+  <head>
+    <meta charset="utf-8" />
+    <title>IUH Calendar Sync - Dashboard Cấu Hình</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Roboto, sans-serif;
+        background-color: #f3f4f6;
+        margin: 0;
+        padding: 40px;
+        color: #333;
+      }
+      .container {
+        max-width: 750px;
+        background: white;
+        margin: 0 auto;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 25px rgba(0, 0, 0, 0.08);
+      }
+      h2 {
+        text-align: center;
+        color: #b71a1a;
+        margin-top: 0;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #f3f4f6;
+      }
 
-    .section { margin-top: 25px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
-    .section-title { font-size: 16px; font-weight: bold; color: #1a73e8; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
+      .section {
+        margin-top: 25px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #eee;
+      }
+      .section-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #1a73e8;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
 
-    label { font-size: 13px; font-weight: 600; display: block; margin-top: 12px; color: #555; }
-    input[type="text"], input[type="password"] { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; outline: none; font-size: 14px; }
-    input:focus, select:focus { border-color: #1a73e8; box-shadow: 0 0 0 3px rgba(26,115,232,0.15); }
+      label {
+        font-size: 13px;
+        font-weight: 600;
+        display: block;
+        margin-top: 12px;
+        color: #555;
+      }
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        padding: 10px;
+        margin-top: 6px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        box-sizing: border-box;
+        outline: none;
+        font-size: 14px;
+      }
+      input:focus,
+      select:focus {
+        border-color: #1a73e8;
+        box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
+      }
 
-    /* ============================================================
+      /* ============================================================
        COLOR PICKER WIDGET
        ============================================================ */
-    .color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px; }
-    .color-item { display: flex; flex-direction: column; gap: 4px; }
-    .color-item > label { margin-top: 0; }
+      .color-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-top: 10px;
+      }
+      .color-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .color-item > label {
+        margin-top: 0;
+      }
 
-    /* Trigger button */
-    .color-picker-trigger {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 12px; border: 1px solid #ccc; border-radius: 8px;
-      cursor: pointer; background: #f9f9f9; margin-top: 6px;
-      transition: border-color 0.2s, box-shadow 0.2s; user-select: none;
-    }
-    .color-picker-trigger:hover { border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,0.15); }
-    .color-swatch {
-      width: 28px; height: 28px; border-radius: 50%;
-      border: 2px solid rgba(0,0,0,0.15); flex-shrink: 0;
-      transition: transform 0.15s;
-    }
-    .color-picker-trigger:hover .color-swatch { transform: scale(1.1); }
-    .color-hex-display { font-size: 13px; font-weight: 600; color: #333; font-family: monospace; }
+      /* Trigger button */
+      .color-picker-trigger {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        cursor: pointer;
+        background: #f9f9f9;
+        margin-top: 6px;
+        transition:
+          border-color 0.2s,
+          box-shadow 0.2s;
+        user-select: none;
+      }
+      .color-picker-trigger:hover {
+        border-color: #1a73e8;
+        box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);
+      }
+      .color-swatch {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 2px solid rgba(0, 0, 0, 0.15);
+        flex-shrink: 0;
+        transition: transform 0.15s;
+      }
+      .color-picker-trigger:hover .color-swatch {
+        transform: scale(1.1);
+      }
+      .color-hex-display {
+        font-size: 13px;
+        font-weight: 600;
+        color: #333;
+        font-family: monospace;
+      }
 
-    /* Floating picker panel */
-    .color-picker-panel {
-      position: fixed; z-index: 99999;
-      background: white; border-radius: 14px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.1);
-      padding: 16px; width: 280px;
-      display: none;
-      animation: panelIn 0.15s ease;
-    }
-    @keyframes panelIn {
-      from { opacity: 0; transform: translateY(-6px) scale(0.97); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-    .color-picker-panel.visible { display: block; }
+      /* Floating picker panel */
+      .color-picker-panel {
+        position: fixed;
+        z-index: 99999;
+        background: white;
+        border-radius: 14px;
+        box-shadow:
+          0 8px 32px rgba(0, 0, 0, 0.18),
+          0 2px 8px rgba(0, 0, 0, 0.1);
+        padding: 16px;
+        width: 280px;
+        display: none;
+        animation: panelIn 0.15s ease;
+      }
+      @keyframes panelIn {
+        from {
+          opacity: 0;
+          transform: translateY(-6px) scale(0.97);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      .color-picker-panel.visible {
+        display: block;
+      }
 
-    /* Preset grid */
-    .preset-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-    .preset-colors {
-      display: grid; grid-template-columns: repeat(7, 1fr);
-      gap: 5px; margin-bottom: 14px;
-    }
-    .preset-dot {
-      width: 28px; height: 28px; border-radius: 50%;
-      cursor: pointer; border: 2px solid transparent;
-      transition: transform 0.12s, border-color 0.12s;
-      position: relative;
-    }
-    .preset-dot:hover { transform: scale(1.18); border-color: rgba(0,0,0,0.25); }
-    .preset-dot.selected::after {
-      content: '✓'; position: absolute; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: bold; color: white;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-    }
+      /* Preset grid */
+      .preset-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+      }
+      .preset-colors {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 5px;
+        margin-bottom: 14px;
+      }
+      .preset-dot {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition:
+          transform 0.12s,
+          border-color 0.12s;
+        position: relative;
+      }
+      .preset-dot:hover {
+        transform: scale(1.18);
+        border-color: rgba(0, 0, 0, 0.25);
+      }
+      .preset-dot.selected::after {
+        content: "✓";
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: bold;
+        color: white;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+      }
 
-    /* HSV canvas */
-    .hsv-area { margin-bottom: 12px; }
-    .sv-canvas {
-      width: 100%; height: 150px; border-radius: 8px;
-      cursor: crosshair; display: block;
-      border: 1px solid #eee;
-    }
-    .hue-canvas {
-      width: 100%; height: 18px; border-radius: 9px;
-      cursor: pointer; display: block;
-      border: 1px solid #eee;
-    }
-    .sv-thumb {
-      position: absolute; width: 14px; height: 14px;
-      border-radius: 50%; border: 2px solid white;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-      pointer-events: none; transform: translate(-50%, -50%);
-    }
-    .hue-thumb {
-      position: absolute; width: 18px; height: 18px;
-      border-radius: 50%; border: 2px solid white;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-      pointer-events: none; transform: translate(-50%, -50%);
-      top: 50%;
-    }
+      /* HSV canvas */
+      .hsv-area {
+        margin-bottom: 12px;
+      }
+      .sv-canvas {
+        width: 100%;
+        height: 150px;
+        border-radius: 8px;
+        cursor: crosshair;
+        display: block;
+        border: 1px solid #eee;
+      }
+      .hue-canvas {
+        width: 100%;
+        height: 18px;
+        border-radius: 9px;
+        cursor: pointer;
+        display: block;
+        border: 1px solid #eee;
+      }
+      .sv-thumb {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+      }
+      .hue-thumb {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+        top: 50%;
+      }
 
-    /* Hex input row */
-    .hex-row { display: flex; align-items: center; gap: 8px; }
-    .hex-preview-box {
-      width: 32px; height: 32px; border-radius: 6px;
-      border: 1px solid #ddd; flex-shrink: 0;
-    }
-    .hex-input {
-      flex: 1; padding: 7px 10px; border: 1px solid #ccc;
-      border-radius: 6px; font-size: 13px; font-family: monospace;
-      font-weight: 600; outline: none; color: #333;
-    }
-    .hex-input:focus { border-color: #1a73e8; }
-    .toggle-hsv-btn {
-      font-size: 11px; color: #1a73e8; cursor: pointer;
-      text-decoration: underline; margin-bottom: 8px; display: inline-block;
-    }
+      /* Hex input row */
+      .hex-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .hex-preview-box {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+        flex-shrink: 0;
+      }
+      .hex-input {
+        flex: 1;
+        padding: 7px 10px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: monospace;
+        font-weight: 600;
+        outline: none;
+        color: #333;
+      }
+      .hex-input:focus {
+        border-color: #1a73e8;
+      }
+      .toggle-hsv-btn {
+        font-size: 11px;
+        color: #1a73e8;
+        cursor: pointer;
+        text-decoration: underline;
+        margin-bottom: 8px;
+        display: inline-block;
+      }
 
-    /* Thiết kế hàng Toggle switch đồng bộ */
-    .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; background: #f8f9fa; padding: 12px; border-radius: 8px; }
-    .switch { position: relative; display: inline-block; width: 46px; height: 24px; }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 24px; }
-    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .3s; border-radius: 50%; }
-    input:checked + .slider { background-color: #0f9d58; }
-    input:checked + .slider:before { transform: translateX(22px); }
+      /* Thiết kế hàng Toggle switch đồng bộ */
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 12px;
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 8px;
+      }
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 46px;
+        height: 24px;
+      }
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: 0.3s;
+        border-radius: 24px;
+      }
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: 0.3s;
+        border-radius: 50%;
+      }
+      input:checked + .slider {
+        background-color: #0f9d58;
+      }
+      input:checked + .slider:before {
+        transform: translateX(22px);
+      }
 
-    .btn-container { margin-top: 30px; display: flex; gap: 15px; }
-    #saveBtn { flex: 1; background: #b71a1a; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer; transition: background 0.2s; }
-    #saveBtn:hover { background: #961313; }
-    #status { font-size: 14px; text-align: center; margin-top: 15px; font-weight: bold; min-height: 20px; }
-  </style>
-</head>
-<body>
+      .btn-container {
+        margin-top: 30px;
+        display: flex;
+        gap: 15px;
+      }
+      #saveBtn {
+        flex: 1;
+        background: #b71a1a;
+        color: white;
+        border: none;
+        padding: 12px;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 15px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      #saveBtn:hover {
+        background: #961313;
+      }
+      #status {
+        font-size: 14px;
+        text-align: center;
+        margin-top: 15px;
+        font-weight: bold;
+        min-height: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>⚙️ BẢNG ĐIỀU KHIỂN EXTENSION IUH SYNC</h2>
 
-<div class="container">
-  <h2>⚙️ BẢNG ĐIỀU KHIỂN EXTENSION IUH SYNC</h2>
+      <div class="section">
+        <div class="section-title">🔗 Cấu hình API & Tài khoản</div>
 
-  <div class="section">
-    <div class="section-title">🔗 Cấu hình API & Tài khoản</div>
+        <label>Mã số sinh viên (MSSV):</label>
+        <input
+          type="text"
+          id="username"
+          placeholder="Nhập tài khoản sinh viên"
+        />
 
-    <label>Mã số sinh viên (MSSV):</label>
-    <input type="text" id="username" placeholder="Nhập tài khoản sinh viên">
+        <label class="title">🔑 Mật khẩu:</label>
+        <div class="password-wrapper" style="position: relative; width: 100%">
+          <input
+            type="password"
+            id="password"
+            placeholder="Nhập mật khẩu sinh viên"
+            style="
+              width: 100%;
+              padding: 10px;
+              padding-right: 40px;
+              box-sizing: border-box;
+              border: 1px solid #ccc;
+              border-radius: 6px;
+              outline: none;
+            "
+          />
+          <span
+            class="eye-icon"
+            id="togglePassword"
+            title="Hiện mật khẩu"
+            style="
+              position: absolute;
+              right: 10px;
+              top: 50%;
+              transform: translateY(-50%);
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              width: 24px;
+              height: 24px;
+            "
+          >
+            <svg
+              id="eyeIcon"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#666"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
+              ></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+          </span>
+        </div>
 
-    <label class="title">🔑 Mật khẩu:</label>
-    <div class="password-wrapper" style="position: relative; width: 100%;">
-      <input
-        type="password"
-        id="password"
-        placeholder="Nhập mật khẩu sinh viên"
-        style="width: 100%; padding: 10px; padding-right: 40px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; outline: none;"
+        <label>Link Google Apps Script (GAS):</label>
+        <input
+          type="text"
+          id="scriptUrl"
+          placeholder="https://script.google.com/macros/s/.../exec"
+        />
+      </div>
+
+      <div class="section">
+        <div class="section-title">
+          🎨 Cấu hình Màu sắc Lịch học (Google Calendar)
+        </div>
+        <div class="color-grid">
+          <div class="color-item">
+            <label>Môn Lý thuyết:</label>
+            <div
+              class="color-picker-trigger"
+              id="trigger-ly-thuyet"
+              data-key="ly-thuyet"
+            >
+              <div class="color-swatch" id="swatch-ly-thuyet"></div>
+              <span class="color-hex-display" id="hexdisplay-ly-thuyet"
+                >#616161</span
+              >
+            </div>
+          </div>
+
+          <div class="color-item">
+            <label>Môn Thực hành:</label>
+            <div
+              class="color-picker-trigger"
+              id="trigger-thuc-hanh"
+              data-key="thuc-hanh"
+            >
+              <div class="color-swatch" id="swatch-thuc-hanh"></div>
+              <span class="color-hex-display" id="hexdisplay-thuc-hanh"
+                >#33b679</span
+              >
+            </div>
+          </div>
+
+          <div class="color-item">
+            <label>Môn Trực tuyến:</label>
+            <div
+              class="color-picker-trigger"
+              id="trigger-truc-tuyen"
+              data-key="truc-tuyen"
+            >
+              <div class="color-swatch" id="swatch-truc-tuyen"></div>
+              <span class="color-hex-display" id="hexdisplay-truc-tuyen"
+                >#039be5</span
+              >
+            </div>
+          </div>
+
+          <div class="color-item">
+            <label>Lịch Thi:</label>
+            <div class="color-picker-trigger" id="trigger-thi" data-key="thi">
+              <div class="color-swatch" id="swatch-thi"></div>
+              <span class="color-hex-display" id="hexdisplay-thi">#f6bf26</span>
+            </div>
+          </div>
+
+          <div class="color-item" style="grid-column: span 2">
+            <label>Lịch Tạm ngưng:</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">
+          ⚡ Cấu hình Tự động hóa (Khi mở trang trường)
+        </div>
+
+        <div class="toggle-row">
+          <span style="font-size: 14px; font-weight: 500"
+            >Tự động điền tài khoản MSSV và Mật khẩu</span
+          >
+          <label class="switch">
+            <input type="checkbox" id="autoFillInfo" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <span style="font-size: 14px; font-weight: 500"
+            >Tự động bẻ khóa giải Captcha bằng mô hình AI</span
+          >
+          <label class="switch">
+            <input type="checkbox" id="autoCaptcha" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <span style="font-size: 14px; font-weight: 500"
+            >Tự động kích hoạt Click Đăng nhập sau khi giải xong</span
+          >
+          <label class="switch">
+            <input type="checkbox" id="autoClickLogin" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🤖 Tiện ích tự động hóa ngầm</div>
+        <div class="toggle-row">
+          <span style="font-size: 14px; font-weight: 500"
+            >Bật tự động đồng bộ định kỳ hàng tuần (7 ngày/lần)</span
+          >
+          <label class="switch">
+            <input type="checkbox" id="autoSyncEnabled" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="btn-container">
+        <button id="saveBtn">LƯU TOÀN BỘ CẤU HÌNH</button>
+      </div>
+
+      <div id="status"></div>
+
+      <div class="section">
+        <div class="section-title">📝 Tiện ích Khảo sát học phần Tự động</div>
+        <p style="font-size: 13px; color: #666; margin: 0 0 10px 0">
+          Hỗ trợ tự động hoàn thành hàng loạt các phiếu đánh giá môn học còn
+          thiếu. Quy chuẩn chọn mức
+          <strong>"Bình thường"</strong> và điền ý kiến
+          <strong>"Không"</strong>.
+        </p>
+        <button type="button" id="btnStartSurvey" class="btn btn-survey">
+          🚀 Khởi Chạy Auto Survey
+        </button>
+        <div id="survey-status">Đang xử lý kết nối...</div>
+      </div>
+    </div>
+
+    <script src="options.js"></script>
+
+    <!-- Floating Color Picker Panel (shared, positioned by JS) -->
+    <div class="color-picker-panel" id="color-picker-panel">
+      <div class="preset-label">Thư viện màu Google Calendar</div>
+      <div class="preset-colors" id="preset-colors"></div>
+      <span class="toggle-hsv-btn" id="toggle-hsv-btn"
+        >▼ Mở bảng màu tuỳ chỉnh</span
       >
-      <span
-        class="eye-icon"
-        id="togglePassword"
-        title="Hiện mật khẩu"
-        style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;"
-      >
-        <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-          <line x1="1" y1="1" x2="23" y2="23"></line>
-        </svg>
-      </span>
-    </div>
-
-    <label>Link Google Apps Script (GAS):</label>
-    <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
-  </div>
-
-  <div class="section">
-    <div class="section-title">🎨 Cấu hình Màu sắc Lịch học (Google Calendar)</div>
-    <div class="color-grid">
-      <div class="color-item">
-        <label>Môn Lý thuyết:</label>
-        <div class="color-picker-trigger" id="trigger-ly-thuyet" data-key="ly-thuyet">
-          <div class="color-swatch" id="swatch-ly-thuyet"></div>
-          <span class="color-hex-display" id="hexdisplay-ly-thuyet">#616161</span>
+      <div class="hsv-area" id="hsv-area" style="display: none">
+        <div style="position: relative">
+          <canvas
+            class="sv-canvas"
+            id="sv-canvas"
+            width="248"
+            height="150"
+          ></canvas>
+          <div class="sv-thumb" id="sv-thumb" style="position: absolute"></div>
+        </div>
+        <div style="position: relative; margin-top: 8px">
+          <canvas
+            class="hue-canvas"
+            id="hue-canvas"
+            width="248"
+            height="18"
+          ></canvas>
+          <div
+            class="hue-thumb"
+            id="hue-thumb"
+            style="position: absolute"
+          ></div>
         </div>
       </div>
-
-      <div class="color-item">
-        <label>Môn Thực hành:</label>
-        <div class="color-picker-trigger" id="trigger-thuc-hanh" data-key="thuc-hanh">
-          <div class="color-swatch" id="swatch-thuc-hanh"></div>
-          <span class="color-hex-display" id="hexdisplay-thuc-hanh">#33b679</span>
-        </div>
-      </div>
-
-      <div class="color-item">
-        <label>Môn Trực tuyến:</label>
-        <div class="color-picker-trigger" id="trigger-truc-tuyen" data-key="truc-tuyen">
-          <div class="color-swatch" id="swatch-truc-tuyen"></div>
-          <span class="color-hex-display" id="hexdisplay-truc-tuyen">#039be5</span>
-        </div>
-      </div>
-
-      <div class="color-item">
-        <label>Lịch Thi:</label>
-        <div class="color-picker-trigger" id="trigger-thi" data-key="thi">
-          <div class="color-swatch" id="swatch-thi"></div>
-          <span class="color-hex-display" id="hexdisplay-thi">#f6bf26</span>
-        </div>
-      </div>
-
-      <div class="color-item" style="grid-column: span 2;">
-        <label>Lịch Tạm ngưng:</label>
+      <div class="hex-row" style="margin-top: 10px">
+        <div class="hex-preview-box" id="hex-preview-box"></div>
+        <input
+          type="text"
+          class="hex-input"
+          id="hex-input"
+          maxlength="7"
+          placeholder="#rrggbb"
+        />
       </div>
     </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">⚡ Cấu hình Tự động hóa (Khi mở trang trường)</div>
-
-    <div class="toggle-row">
-      <span style="font-size:14px; font-weight:500;">Tự động điền tài khoản MSSV và Mật khẩu</span>
-      <label class="switch">
-        <input type="checkbox" id="autoFillInfo">
-        <span class="slider"></span>
-      </label>
-    </div>
-
-    <div class="toggle-row">
-      <span style="font-size:14px; font-weight:500;">Tự động bẻ khóa giải Captcha bằng mô hình AI</span>
-      <label class="switch">
-        <input type="checkbox" id="autoCaptcha">
-        <span class="slider"></span>
-      </label>
-    </div>
-
-    <div class="toggle-row">
-      <span style="font-size:14px; font-weight:500;">Tự động kích hoạt Click Đăng nhập sau khi giải xong</span>
-      <label class="switch">
-        <input type="checkbox" id="autoClickLogin">
-        <span class="slider"></span>
-      </label>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">🤖 Tiện ích tự động hóa ngầm</div>
-    <div class="toggle-row">
-      <span style="font-size:14px; font-weight:500;">Bật tự động đồng bộ định kỳ hàng tuần (7 ngày/lần)</span>
-      <label class="switch">
-        <input type="checkbox" id="autoSyncEnabled">
-        <span class="slider"></span>
-      </label>
-    </div>
-  </div>
-
-  <div class="btn-container">
-    <button id="saveBtn">LƯU TOÀN BỘ CẤU HÌNH</button>
-  </div>
-
-  <div id="status"></div>
-
-  <div class="section">
-    <div class="section-title">📝 Tiện ích Khảo sát học phần Tự động</div>
-    <p style="font-size: 13px; color: #666; margin: 0 0 10px 0;">
-      Hỗ trợ tự động hoàn thành hàng loạt các phiếu đánh giá môn học còn thiếu. Quy chuẩn chọn mức
-      <strong>"Bình thường"</strong> và điền ý kiến <strong>"Không"</strong>.
-    </p>
-    <button type="button" id="btnStartSurvey" class="btn btn-survey">🚀 Khởi Chạy Auto Survey</button>
-    <div id="survey-status">Đang xử lý kết nối...</div>
-  </div>
-</div>
-
-<script src="options.js"></script>
-
-<!-- Floating Color Picker Panel (shared, positioned by JS) -->
-<div class="color-picker-panel" id="color-picker-panel">
-  <div class="preset-label">Thư viện màu Google Calendar</div>
-  <div class="preset-colors" id="preset-colors"></div>
-  <span class="toggle-hsv-btn" id="toggle-hsv-btn">▼ Mở bảng màu tuỳ chỉnh</span>
-  <div class="hsv-area" id="hsv-area" style="display:none;">
-    <div style="position:relative;">
-      <canvas class="sv-canvas" id="sv-canvas" width="248" height="150"></canvas>
-      <div class="sv-thumb" id="sv-thumb" style="position:absolute;"></div>
-    </div>
-    <div style="position:relative; margin-top:8px;">
-      <canvas class="hue-canvas" id="hue-canvas" width="248" height="18"></canvas>
-      <div class="hue-thumb" id="hue-thumb" style="position:absolute;"></div>
-    </div>
-  </div>
-  <div class="hex-row" style="margin-top:10px;">
-    <div class="hex-preview-box" id="hex-preview-box"></div>
-    <input type="text" class="hex-input" id="hex-input" maxlength="7" placeholder="#rrggbb">
-  </div>
-</div>
-</body>
+  </body>
 </html>
