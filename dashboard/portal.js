@@ -376,6 +376,113 @@ function renderDashboard(data) {
   recalculateOverallGPA();
 }
 
+/**
+ * Liên thông từ tab Lịch học dự kiến sang Bảng điểm:
+ * Tạo/cập nhật Học kỳ giả lập trong Bảng điểm để người dùng nhập thử điểm mục tiêu và tính trước GPA Tích lũy.
+ */
+window.pushPlannedCoursesToGradeSimulator = function (
+  dotId,
+  dotText,
+  plannedList = [],
+  regRows = []
+) {
+  if (!globalDashboardData) {
+    globalDashboardData = {
+      creditInfo: { current: 0, total: 150 },
+      semesters: [],
+    };
+  }
+  if (!Array.isArray(globalDashboardData.semesters)) {
+    globalDashboardData.semesters = [];
+  }
+
+  const simSemesterName = `📌 Dự kiến — ${dotText}`;
+  const subjects = [];
+  const seenCodes = new Set();
+
+  const addSubject = (code, name, soTC, isTichHop, isThucHanhThuan) => {
+    const cleanCode = String(code || "").trim();
+    if (!cleanCode || seenCodes.has(cleanCode)) return;
+    seenCodes.add(cleanCode);
+
+    const nameNorm = (name || "").toLowerCase();
+    const isExcluded =
+      nameNorm.includes("giáo dục thể chất") ||
+      nameNorm.includes("giáo dục quốc phòng") ||
+      nameNorm.includes("tiếng anh") ||
+      nameNorm.includes("anh văn");
+
+    subjects.push({
+      maHP: cleanCode,
+      tenHP: `${name || "(Môn dự kiến)"} [Mô phỏng]`,
+      soTC: parseInt(soTC || 0, 10) || 2,
+      tk: [8.0, 8.0, null, null, null, null],
+      th: isTichHop || isThucHanhThuan ? [8.0, null, null, null] : [],
+      diemGK: 8.0,
+      diemThi: 8.0,
+      diem10: 8.0,
+      diem4: 3.5,
+      diemChu: "B+",
+      xepLoai: "Khá",
+      isDat: true,
+      isExcludedFromGPA: isExcluded,
+      isTichHop: Boolean(isTichHop),
+      isThucHanhThuan: Boolean(isThucHanhThuan),
+      isTotNghiep: false,
+    });
+  };
+
+  plannedList.forEach((p) => {
+    const tcLT = Number(p.tcLT ?? p.soTC ?? 0);
+    const tcTH = Number(p.tcTH ?? 0);
+    addSubject(
+      p.maLHP || p.maHocPhan || p.maMonHoc,
+      p.tenMonHoc,
+      p.soTC,
+      tcLT > 0 && tcTH > 0,
+      tcLT === 0 && tcTH > 0
+    );
+  });
+
+  regRows.forEach((r) => {
+    const code = r.MaLopHocPhan || r.MaLHP || "";
+    const soTC = parseInt(r.SoTinChi || r.SoTC || r.DVHT || 0, 10) || 0;
+    const hasTH = r.MaNhomThucHanh != null && Number(r.MaNhomThucHanh) > 0;
+    addSubject(code, r.TenMonHoc, soTC, hasTH && soTC > 1, hasTH && soTC === 1);
+  });
+
+  // Thay thế học kỳ mô phỏng cũ của cùng đợt (nếu có) hoặc thêm vào cuối bảng điểm
+  const existingIdx = globalDashboardData.semesters.findIndex(
+    (s) => s.semesterName === simSemesterName
+  );
+  if (existingIdx >= 0) {
+    globalDashboardData.semesters[existingIdx].subjects = subjects;
+  } else {
+    globalDashboardData.semesters.push({
+      semesterName: simSemesterName,
+      subjects,
+    });
+  }
+
+  renderDashboard(globalDashboardData);
+  // Kích hoạt tính lại điểm tổng kết cho các dòng mô phỏng
+  document.querySelectorAll("tr.subject-row").forEach((tr) => {
+    if (tr.innerText.includes("[Mô phỏng]")) {
+      simulateRowCalculation(tr);
+    }
+  });
+
+  // Chuyển sang tab Kết quả học tập và cuộn xuống cuối bảng điểm
+  const navGrades = document.getElementById("nav-grades");
+  if (navGrades) navGrades.click();
+  setTimeout(() => {
+    const tbody = $("grade-table-body");
+    if (tbody && tbody.lastElementChild) {
+      tbody.lastElementChild.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, 150);
+};
+
 function simulateRowCalculation(tr) {
   const readInputs = (selector) =>
     Array.from(tr.querySelectorAll(selector))
@@ -1211,9 +1318,6 @@ function initSettingsUI() {
   const tabCtk = $("tab-content-ctk");
   const tabLhp = $("tab-content-lhp");
 
-  const btnToggleReg = $("btn-toggle-reg");
-  const regPanel = $("reg-panel");
-
   const btnTogglePassword = $("btn-toggle-password");
   const txtPass = $("setting-pass");
 
@@ -1254,13 +1358,6 @@ function initSettingsUI() {
       if (tabLhp) tabLhp.style.display = "block";
       loadLhpTab();
     }
-  }
-
-  if (btnToggleReg && regPanel) {
-    btnToggleReg.addEventListener("click", () => {
-      regPanel.classList.toggle("show");
-      btnToggleReg.innerText = regPanel.classList.contains("show") ? "✕" : "i";
-    });
   }
 
   if (btnTogglePassword && txtPass) {
@@ -1326,7 +1423,11 @@ function initSettingsUI() {
 
   const btnRefreshLhp = $("btn-refresh-lhp");
   if (btnRefreshLhp) {
-    btnRefreshLhp.addEventListener("click", () => loadLhpTab(true));
+    btnRefreshLhp.addEventListener("click", () => {
+      const selectEl = $("lhp-semester-select");
+      const currentDot = selectEl && selectEl.value ? selectEl.value : null;
+      loadLhpTab(true, currentDot);
+    });
   }
 
   if (navSurvey) {
@@ -1361,6 +1462,18 @@ function initSettingsUI() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.getCurrent) {
+    chrome.tabs.getCurrent((tab) => {
+      if (tab && tab.id) {
+        chrome.tabs.getZoom(tab.id, (currentZoom) => {
+          if (Math.abs((currentZoom || 1) - 0.75) > 0.01) {
+            chrome.tabs.setZoom(tab.id, 0.75);
+          }
+        });
+      }
+    });
+  }
+
   initSettingsUI();
   loadSettingsToForm();
 

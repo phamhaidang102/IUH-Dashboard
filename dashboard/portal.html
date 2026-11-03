@@ -179,6 +179,11 @@
         color: var(--text-main);
         outline: none;
       }
+      #ctk-search-input:focus,
+      #lhp-semester-select:focus {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+      }
       .pc-hex-input:focus {
         border-color: var(--primary);
       }
@@ -192,10 +197,9 @@
         <nav class="sidebar-nav">
           <a href="#" id="nav-grades" class="active">📊 Kết quả học tập</a>
           <a href="#" id="nav-schedule">📅 Lịch học & Đồng bộ</a>
-          <a href="#" id="nav-suggest">📅 Lịch học dự kiến</a>
           <a href="#" id="nav-survey">📝 Khảo sát tự động</a>
           <a href="#" id="nav-ctk">🗂️ Chương trình khung</a>
-          <a href="#" id="nav-lhp">🏛️ Lịch học phần</a>
+          <a href="#" id="nav-lhp">📅 Lịch học dự kiến</a>
         </nav>
 
         <div
@@ -220,35 +224,6 @@
           >
         </div>
       </aside>
-
-      <section class="regulation-panel" id="reg-panel">
-        <div
-          class="info-trigger"
-          id="btn-toggle-reg"
-          title="Xem quy chế đào tạo"
-        >
-          i
-        </div>
-        <div class="reg-content">
-          <h3>📜 Quy chế đào tạo IUH</h3>
-          <ul>
-            <li>
-              <b>Lý thuyết:</b>
-              <code>50% Cuối kỳ + 30% Giữa kỳ + 20% Thường xuyên</code>.
-            </li>
-            <li><b>Điểm liệt:</b> Thi cuối kỳ &lt; 3.0 ➜ <b>F (Rớt)</b>.</li>
-            <li>
-              <b>Tích hợp:</b> Thực hành &lt; 3.0 ➜ Không được thi Lý thuyết.
-            </li>
-            <li>
-              <b>Làm tròn:</b> &lt;0.25 → 0.0 | 0.25–&lt;0.75 → 0.5 | ≥0.75 →
-              1.0.
-            </li>
-            <li><b>Tốt nghiệp/Thực tập:</b> Đạt từ 5.0 trở lên.</li>
-            <li><b>Loại trừ:</b> Thể chất, Quốc phòng không tính GPA.</li>
-          </ul>
-        </div>
-      </section>
 
       <main class="main-content">
         <div id="tab-content-grades" class="tab-pane">
@@ -300,6 +275,25 @@
             <div class="stat-card">
               <h3>GPA (Hệ 4)</h3>
               <p class="stat-value text-orange" id="val-gpa-4">--</p>
+            </div>
+            <div class="stat-card reg-card" id="reg-panel">
+              <h3>📜 Quy chế đào tạo IUH</h3>
+              <ul class="reg-list">
+                <li>
+                  <b>Lý thuyết:</b>
+                  <code>50% Cuối kỳ + 30% Giữa kỳ + 20% Thường xuyên</code>.
+                </li>
+                <li><b>Điểm liệt:</b> Thi cuối kỳ &lt; 3.0 ➜ <b>F (Rớt)</b>.</li>
+                <li>
+                  <b>Tích hợp:</b> Thực hành &lt; 3.0 ➜ Không được thi Lý thuyết.
+                </li>
+                <li>
+                  <b>Làm tròn:</b> &lt;0.25 → 0.0 | 0.25–&lt;0.75 → 0.5 | ≥0.75 →
+                  1.0.
+                </li>
+                <li><b>Tốt nghiệp/Thực tập:</b> Đạt từ 5.0 trở lên.</li>
+                <li><b>Loại trừ:</b> Thể chất, Quốc phòng không tính GPA.</li>
+              </ul>
             </div>
           </section>
 
@@ -735,9 +729,49 @@
 
           <!-- Bảng chương trình khung -->
           <section class="table-container" id="ctk-table-section" style="display: none">
-            <div style="padding: 0 0 12px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-              <span id="ctk-summary-required" style="font-size: 13px; color: var(--text-muted);"></span>
-              <span id="ctk-summary-done" style="font-size: 13px; color: var(--text-muted);"></span>
+            <div style="padding: 0 0 16px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                <span id="ctk-summary-required" style="font-size: 13px; color: var(--text-muted);"></span>
+                <span id="ctk-summary-done" style="font-size: 13px; color: var(--text-muted);"></span>
+                <span id="ctk-search-count" style="font-size: 13px; color: var(--primary); font-weight: 600; display: none;"></span>
+              </div>
+              <div style="position: relative; width: 100%; max-width: 340px;">
+                <input
+                  type="text"
+                  id="ctk-search-input"
+                  placeholder="🔍 Tìm kiếm môn học, mã MH, mã HP..."
+                  style="
+                    width: 100%;
+                    padding: 8px 32px 8px 12px;
+                    border-radius: 8px;
+                    border: 1px solid var(--border-color);
+                    background: var(--bg-dark);
+                    color: var(--text-main);
+                    font-size: 13px;
+                    outline: none;
+                    box-sizing: border-box;
+                    transition: border-color 0.2s, box-shadow 0.2s;
+                  "
+                />
+                <button
+                  id="ctk-search-clear"
+                  style="
+                    position: absolute;
+                    right: 8px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    background: transparent;
+                    border: none;
+                    color: var(--text-muted);
+                    font-size: 14px;
+                    cursor: pointer;
+                    display: none;
+                    padding: 2px 4px;
+                    line-height: 1;
+                  "
+                  title="Xóa tìm kiếm"
+                >✕</button>
+              </div>
             </div>
             <div class="table-scroll">
               <table class="grade-table" id="ctk-table">
@@ -748,7 +782,8 @@
                     <th style="text-align: left; min-width: 200px">Tên môn học</th>
                     <th>Mã HP</th>
                     <th class="text-center">TC</th>
-                    <th>Tiên quyết / Trước / Song hành</th>
+                    <th>Tiên quyết <span style="color:#fc8181">(b)</span> / Trước <span style="color:#f6ad55">(a)</span> / Song hành <span style="color:#68d391">(c)</span></th>
+                    <th title="Môn này là học phần Tiên quyết (b) / Học trước (a) / Song hành (c) của những môn nào?">Là ĐK <span style="color:#fc8181">(b)</span> / <span style="color:#f6ad55">(a)</span> / <span style="color:#68d391">(c)</span> của môn</th>
                     <th class="text-center">Trạng thái</th>
                   </tr>
                 </thead>
@@ -761,7 +796,7 @@
         </div>
 
         <!-- ============================================================ -->
-        <!--  TAB: LỊCH HỌC PHẦN                                         -->
+        <!--  TAB: LỊCH HỌC DỰ KIẾN (LHP)                                -->
         <!-- ============================================================ -->
         <div id="tab-content-lhp" class="tab-pane" style="display: none">
           <style>
@@ -816,15 +851,79 @@
 
           <header class="topbar">
             <div>
-              <h1>Lớp học phần đã đăng ký</h1>
+              <h1>Lịch học dự kiến &amp; Xếp lịch học phần</h1>
               <p class="subtitle text-muted font-medium">
-                Các lớp học phần đã đăng ký trong học kỳ này.
+                Xem lớp đã đăng ký, xếp thử lịch học kỳ tới, kiểm tra điều kiện tiên quyết (a/b/c) và dự tính học phí LT/TH.
                 <span id="lhp-summary" style="margin-left: 12px; color: var(--primary); font-weight: 600;"></span>
               </p>
             </div>
-            <button id="btn-refresh-lhp" class="btn-primary">
-              <span class="icon">🔄</span> Tải lại
-            </button>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <select
+                id="lhp-hinhthuc-select"
+                title="Hình thức đăng ký trên DKHP"
+                style="
+                  background: var(--bg-dark);
+                  color: var(--text-main);
+                  border: 1px solid var(--border-color);
+                  padding: 8px 10px;
+                  border-radius: 8px;
+                  font-size: 13px;
+                  font-weight: 500;
+                  outline: none;
+                  cursor: pointer;
+                "
+              >
+                <option value="1">📘 Học mới</option>
+                <option value="2">🔁 Học lại</option>
+                <option value="3">📈 Học cải thiện</option>
+              </select>
+              <select
+                id="lhp-semester-select"
+                title="Chọn đợt đăng ký / học kỳ"
+                style="
+                  background: var(--bg-dark);
+                  color: var(--text-main);
+                  border: 1px solid var(--border-color);
+                  padding: 8px 12px;
+                  border-radius: 8px;
+                  font-size: 13px;
+                  font-weight: 500;
+                  outline: none;
+                  cursor: pointer;
+                  min-width: 185px;
+                  transition: border-color 0.2s, box-shadow 0.2s;
+                "
+              >
+                <option value="">⏳ Đang tải học kỳ...</option>
+              </select>
+              <button
+                id="btn-open-autoreg-modal"
+                class="btn-primary"
+                style="background: linear-gradient(135deg, #2563eb, #10b981); color: #ffffff; border: 1px solid rgba(16, 185, 129, 0.5); box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25);"
+                title="Mở Trung tâm Tự động Đăng ký Học phần (Direct API / Canh Slot / Tự động thao tác trên cổng DKHP)"
+              >
+                <span class="icon">🚀</span> Tự động ĐK trên cổng DKHP
+              </button>
+              <button
+                id="btn-copy-planned-lhp"
+                class="btn-primary"
+                style="background: rgba(59, 130, 246, 0.16); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.35);"
+                title="Sao chép danh sách Mã LHP dự kiến để dán nhanh khi đăng ký"
+              >
+                <span class="icon">📋</span> Copy Mã LHP
+              </button>
+              <button
+                id="btn-sim-planned-gpa"
+                class="btn-primary"
+                style="background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);"
+                title="Đẩy các môn dự kiến sang Bảng điểm để nhập thử điểm và tính GPA tích lũy"
+              >
+                <span class="icon">📊</span> Mô phỏng GPA
+              </button>
+              <button id="btn-refresh-lhp" class="btn-primary">
+                <span class="icon">🔄</span> Tải lại từ DKHP
+              </button>
+            </div>
           </header>
 
           <!-- Auth gate -->
@@ -832,7 +931,7 @@
             <p style="font-size: 48px; margin-bottom: 16px;">🔐</p>
             <h2 style="color: var(--text-main); margin-bottom: 8px;">Yêu cầu đăng nhập</h2>
             <p style="color: var(--text-muted); margin-bottom: 24px;">
-              Vui lòng đăng nhập vào trang DKHP trước, sau đó nhấn "Tải lại".
+              Vui lòng đăng nhập vào trang DKHP trước, sau đó nhấn "Tải lại từ DKHP".
             </p>
             <a href="https://dkhp.iuh.edu.vn" target="_blank" class="btn-primary" style="text-decoration: none; padding: 10px 20px; border-radius: 8px;">
               🌐 Mở trang DKHP
@@ -841,35 +940,320 @@
 
           <!-- Loading state -->
           <div id="lhp-loading" style="display: none; text-align: center; padding: 60px 20px;">
-            <p style="color: var(--text-muted); font-size: 16px;">⏳ Đang tải lớp học phần...</p>
+            <p style="color: var(--text-muted); font-size: 16px;">⏳ Đang tải lịch học dự kiến...</p>
           </div>
 
-          <!-- Bảng đã ĐK -->
-          <section class="table-container" id="lhp-table-section" style="display: none">
-            <div id="lhp-calendar-container" style="margin-bottom: 24px;"></div>
-            
-            <h3 style="margin: 0 0 16px 4px; font-size: 16px; color: var(--text-main);">Danh sách môn học</h3>
-            <div class="table-scroll">
-              <table class="grade-table" id="lhp-table">
-                <thead>
-                  <tr>
-                    <th style="text-align:center">STT</th>
-                    <th>Mã LHP</th>
-                    <th style="text-align:left; min-width:200px">Tên môn học</th>
-                    <th>Lớp dự kiến</th>
-                    <th class="text-center">Số TC</th>
-                    <th class="text-center">Nhóm TH</th>
-                    <th>Học phí</th>
-                    <th>Ngày ĐK</th>
-                    <th>Trạng thái LHP</th>
-                  </tr>
-                </thead>
-                <tbody id="lhp-table-body">
-                  <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">Đang tải...</td></tr>
-                </tbody>
-              </table>
+          <!-- Split-view Planner & Schedule -->
+          <section class="lhp-planner-section" id="lhp-table-section" style="display: none">
+            <div class="lhp-planner-layout">
+              <!-- CỘT TRÁI (40%): CLIPBOARD MÔN ĐÃ CHỌN TỪ CHƯƠNG TRÌNH KHUNG -->
+              <aside class="lhp-left-panel">
+                <div class="lhp-panel-header">
+                  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+                    <h3 style="margin: 0; font-size: 14.5px; color: var(--text-main);">📋 Clipboard Môn Dự Kiến</h3>
+                    <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                      <button
+                        id="btn-goto-ctk-from-clipboard"
+                        type="button"
+                        class="lhp-mini-btn"
+                        title="Sang tab Chương trình khung để chọn/clip các môn cần học"
+                      >
+                        📂 + Chọn từ CTK
+                      </button>
+                      <button
+                        id="btn-fetch-open-courses"
+                        type="button"
+                        class="lhp-mini-btn"
+                        title="Quét danh sách môn đang mở đăng ký trực tiếp từ DKHP cho đợt này"
+                      >
+                        ⚡ Quét DKHP
+                      </button>
+                      <button
+                        id="btn-clipboard-autoreg"
+                        type="button"
+                        class="lhp-mini-btn"
+                        style="background: rgba(16, 185, 129, 0.18); color: #34d399; border-color: rgba(16, 185, 129, 0.45);"
+                        title="Tự động đăng ký toàn bộ các môn trong Clipboard lên cổng DKHP"
+                      >
+                        🚀 Tự động ĐK
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Chế độ nguồn môn học (Mặc định: Clipboard các môn đã clip từ CTK) -->
+                  <div class="lhp-source-tabs" id="lhp-source-tabs">
+                    <button type="button" class="lhp-source-tab active" data-source="pinned">
+                      📋 Clipboard (<span id="lhp-pinned-count-tab">0</span>)
+                    </button>
+                    <button type="button" class="lhp-source-tab" data-source="suggest">
+                      💡 Gợi ý nên học
+                    </button>
+                    <button type="button" class="lhp-source-tab" data-source="hybrid">
+                      🌐 Tất cả môn CTK
+                    </button>
+                  </div>
+
+                  <!-- Ô tìm kiếm môn -->
+                  <div style="position: relative; margin-top: 10px;">
+                    <input
+                      type="text"
+                      id="lhp-course-search"
+                      placeholder="🔍 Tìm trong danh sách đang mở..."
+                      style="
+                        width: 100%;
+                        padding: 8px 30px 8px 11px;
+                        border-radius: 8px;
+                        border: 1px solid var(--border-color);
+                        background: var(--bg-dark);
+                        color: var(--text-main);
+                        font-size: 12.5px;
+                        outline: none;
+                        box-sizing: border-box;
+                      "
+                    />
+                    <button
+                      id="lhp-course-search-clear"
+                      type="button"
+                      style="
+                        position: absolute;
+                        right: 8px;
+                        top: 50%;
+                        transform: translateY(-50%);
+                        background: transparent;
+                        border: none;
+                        color: var(--text-muted);
+                        cursor: pointer;
+                        display: none;
+                        font-size: 13px;
+                      "
+                    >✕</button>
+                  </div>
+
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11.5px; color: var(--text-muted);">
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                      <input type="checkbox" id="lhp-hide-passed-chk" checked style="accent-color: var(--primary); cursor: pointer;" />
+                      Ẩn môn đã đạt
+                    </label>
+                    <span id="lhp-source-status">Chọn môn từ Chương trình khung</span>
+                  </div>
+                </div>
+
+                <div class="lhp-course-list" id="lhp-course-list">
+                  <!-- Danh sách môn học trong Clipboard sẽ được render bởi dkhp-api.js -->
+                </div>
+              </aside>
+
+              <!-- CỘT PHẢI (65%): VÙNG TÍNH HỌC PHÍ LT/TH + LỊCH TUẦN + BẢNG TỔNG HỢP -->
+              <div class="lhp-right-panel">
+                <!-- 1. VÙNG TÍNH HỌC PHÍ & TÍN CHỈ (LT / TH) -->
+                <div class="lhp-tuition-card" id="lhp-tuition-card">
+                  <!-- Render bởi dkhp-api.js -->
+                </div>
+
+                <!-- 2. LƯỚI THỜI KHÓA BIỂU TUẦN -->
+                <div class="table-container" style="padding: 16px 18px; margin-bottom: 18px;">
+                  <div id="lhp-calendar-container"></div>
+                </div>
+
+                <!-- 3. BẢNG DANH SÁCH MÔN HỌC (ĐÃ ĐK + DỰ KIẾN) -->
+                <div class="table-container" style="padding: 16px 18px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                    <h3 style="margin: 0; font-size: 15.5px; color: var(--text-main);">
+                      📋 Danh sách lớp học phần (Chính thức &amp; Dự kiến)
+                    </h3>
+                    <button
+                      id="btn-clear-planned-lhp"
+                      type="button"
+                      class="lhp-mini-btn danger"
+                      style="display: none;"
+                      title="Xóa toàn bộ các tiết học dự kiến trên Thời khóa biểu nhưng vẫn giữ nguyên danh sách môn trong Clipboard"
+                    >
+                      🧹 Clear lịch dự kiến (Giữ Clipboard)
+                    </button>
+                  </div>
+                  <div class="table-scroll">
+                    <table class="grade-table" id="lhp-table">
+                      <thead>
+                        <tr>
+                          <th style="text-align:center">STT</th>
+                          <th style="text-align:center">Phân loại</th>
+                          <th>Mã LHP / HP</th>
+                          <th style="text-align:left; min-width:190px">Tên môn học</th>
+                          <th>Lớp / Lịch</th>
+                          <th class="text-center">TC (LT/TH)</th>
+                          <th class="text-center">Nhóm TH</th>
+                          <th style="text-align:right">Học phí</th>
+                          <th>Trạng thái / ĐK</th>
+                          <th class="text-center">Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody id="lhp-table-body">
+                        <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted);">Đang tải...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
+          <!-- Modal Trung tâm Tự động Đăng ký Học phần (Auto-ĐKHP Control Center) -->
+          <div
+            id="lhp-autoreg-modal"
+            style="
+              position: fixed;
+              inset: 0;
+              background: rgba(2, 6, 23, 0.78);
+              backdrop-filter: blur(4px);
+              z-index: 10000;
+              display: none;
+              align-items: center;
+              justify-content: center;
+              padding: 16px;
+            "
+          >
+            <div
+              class="lhp-modal-box"
+              style="max-width: 920px; max-height: 90vh; width: 100%; border: 1px solid rgba(59, 130, 246, 0.4);"
+            >
+              <div
+                class="lhp-modal-header"
+                style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(16, 185, 129, 0.14));"
+              >
+                <div>
+                  <h3 style="margin: 0; font-size: 16px; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                    🚀 Trung tâm Tự động Đăng ký Học phần (Auto-ĐKHP)
+                  </h3>
+                  <div id="lhp-autoreg-subtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                    Thực thi đăng ký siêu tốc qua API trực tiếp hoặc canh slot tự động từ danh sách Clipboard
+                  </div>
+                </div>
+                <button type="button" class="lhp-modal-close" id="btn-close-autoreg-modal" title="Đóng">✕</button>
+              </div>
+
+              <div class="lhp-modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+                <!-- Thanh tùy chọn chiến lược ĐK -->
+                <div
+                  style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                    padding: 10px 14px;
+                    background: rgba(15, 23, 42, 0.65);
+                    border: 1px solid var(--border-color);
+                    border-radius: 10px;
+                  "
+                >
+                  <label style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-main); cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="lhp-autoreg-autopick-chk" checked style="accent-color: #10b981; width: 15px; height: 15px;" />
+                    <span><b>Tự động chọn lớp còn chỗ &amp; không trùng lịch</b> nếu môn chưa chọn Mã LHP cụ thể (hoặc lớp đã ghim bị đầy)</span>
+                  </label>
+                  <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px;">
+                    <span style="color: var(--text-muted);">🎯 Chu kỳ Canh Slot (Sniper):</span>
+                    <select
+                      id="lhp-autoreg-interval-select"
+                      style="background: var(--bg-dark); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 8px; font-size: 12px;"
+                    >
+                      <option value="10" selected>Mỗi 10 giây (Khuyên dùng — an toàn cho phiên)</option>
+                      <option value="30">Mỗi 30 giây</option>
+                      <option value="60">Mỗi 1 phút</option>
+                      <option value="120">Mỗi 2 phút (Canh người hủy môn)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Bảng danh sách môn trong Clipboard chuẩn bị đăng ký -->
+                <div class="table-scroll" style="max-height: 290px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 10px;">
+                  <table class="grade-table" style="margin: 0;">
+                    <thead>
+                      <tr>
+                        <th style="width: 36px; text-align: center;">
+                          <input type="checkbox" id="lhp-autoreg-check-all" checked title="Chọn / Bỏ chọn tất cả" style="accent-color: var(--primary); cursor: pointer;" />
+                        </th>
+                        <th style="text-align: left;">Môn học trong Clipboard</th>
+                        <th>Mã LHP mục tiêu (12 số)</th>
+                        <th style="width: 110px;">Nhóm / Tổ TH</th>
+                        <th class="text-center">Sĩ số / Lịch</th>
+                        <th>Trạng thái thực thi</th>
+                      </tr>
+                    </thead>
+                    <tbody id="lhp-autoreg-tbody">
+                      <!-- Render bởi dkhp-api.js -->
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Các nút hành động thực thi -->
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button
+                      type="button"
+                      id="btn-autoreg-run-now"
+                      class="btn-primary"
+                      style="background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; font-weight: 700; padding: 10px 18px; border-radius: 8px;"
+                    >
+                      ⚡ Đăng ký ngay (Direct API Siêu tốc)
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-autoreg-toggle-sniper"
+                      class="btn-primary"
+                      style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.45); font-weight: 700; padding: 10px 16px; border-radius: 8px;"
+                    >
+                      🎯 Bật Canh Slot / Tự động thử lại
+                    </button>
+                  </div>
+
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button
+                      type="button"
+                      id="btn-autoreg-open-portal-api"
+                      class="lhp-mini-btn"
+                      style="padding: 9px 13px; background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.4);"
+                      title="Mở tab dkhp.iuh.edu.vn/DangKyHocPhan và tự động chạy bằng Widget tích hợp trên cổng"
+                    >
+                      🌐 Mở cổng DKHP &amp; Tự động ĐK
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-autoreg-open-portal-dom"
+                      class="lhp-mini-btn"
+                      style="padding: 9px 13px;"
+                      title="Mở tab dkhp.iuh.edu.vn/DangKyHocPhan và tự động Click chọn từng môn trên giao diện của trường"
+                    >
+                      🤖 Mở cổng &amp; Auto-Click DOM
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Nhật ký (Terminal Console Log) -->
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <span style="font-size: 11.5px; font-weight: 700; color: var(--text-muted);">🖥️ Nhật ký Tiến trình Đăng ký Học phần (Real-time Log):</span>
+                    <button type="button" id="btn-autoreg-clear-log" style="background: transparent; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer;">🧹 Xóa log</button>
+                  </div>
+                  <div
+                    id="lhp-autoreg-log-box"
+                    style="
+                      background: #020617;
+                      border: 1px solid #1e293b;
+                      border-radius: 8px;
+                      padding: 10px 12px;
+                      height: 150px;
+                      overflow-y: auto;
+                      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                      font-size: 12px;
+                      line-height: 1.5;
+                      color: #cbd5e1;
+                    "
+                  >
+                    <div style="color: #64748b;">💡 Sẵn sàng. Nhấn "⚡ Đăng ký ngay" để gửi lệnh đăng ký trực tiếp lên máy chủ DKHP IUH...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Modal Chi tiết lịch học -->
