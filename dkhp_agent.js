@@ -17,6 +17,16 @@
       .replace(/'/g, "&#039;");
   }
 
+  function removeVietnameseTones(str) {
+    if (!str) return "";
+    return String(str)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .toLowerCase();
+  }
+
   // State của Agent trên trang DKHP
   let _agentPlannedByDot = {};
   let _agentSelectedDot = "64";
@@ -27,6 +37,8 @@
   let _agentSniperIntervalSec = 10;
   let _agentStatusByCourseKey = {}; // { [key]: { state: 'idle'|'running'|'ok'|'wait'|'err', msg: string } }
   let _agentMinimized = false;
+  let _agentSniperToggling = false;
+  const _agentInstanceId = "agent_" + Math.random().toString(36).substring(2, 9);
 
   // ---- Bảo vệ phiên: hàng đợi request, đếm lỗi liên tiếp, khóa sniper dùng chung ----
   const AGENT_MIN_GAP_MS = 300;
@@ -54,6 +66,18 @@
     return p;
   }
 
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      const text = await res.text();
+      return { res, text };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   function agentShouldAbortSniper() {
     return _agentBlocked || _agentFailStreak >= AGENT_MAX_FAIL_STREAK;
   }
@@ -63,30 +87,133 @@
     const cur = (await chrome.storage.local.get(AGENT_SNIPER_LOCK_KEY))[AGENT_SNIPER_LOCK_KEY];
     if (cur && cur.owner !== AGENT_SNIPER_OWNER && Date.now() - cur.ts < staleMs) return false;
     await chrome.storage.local.set({
-      [AGENT_SNIPER_LOCK_KEY]: { owner: AGENT_SNIPER_OWNER, ts: Date.now() },
+      [AGENT_SNIPER_LOCK_KEY]: { owner: AGENT_SNIPER_OWNER, instanceId: _agentInstanceId, ts: Date.now() },
     });
     return true;
   }
 
   function heartbeatAgentSniperLock() {
     chrome.storage.local.set({
-      [AGENT_SNIPER_LOCK_KEY]: { owner: AGENT_SNIPER_OWNER, ts: Date.now() },
+      [AGENT_SNIPER_LOCK_KEY]: { owner: AGENT_SNIPER_OWNER, instanceId: _agentInstanceId, ts: Date.now() },
     });
   }
 
   function releaseAgentSniperLock() {
     chrome.storage.local.get(AGENT_SNIPER_LOCK_KEY, (r) => {
-      if (r[AGENT_SNIPER_LOCK_KEY]?.owner === AGENT_SNIPER_OWNER) {
+      const cur = r[AGENT_SNIPER_LOCK_KEY];
+      if (cur?.owner === AGENT_SNIPER_OWNER && (!cur.instanceId || cur.instanceId === _agentInstanceId)) {
         chrome.storage.local.remove(AGENT_SNIPER_LOCK_KEY);
       }
     });
+  }
+
+  window.addEventListener("pagehide", () => releaseAgentSniperLock());
+  window.addEventListener("beforeunload", () => releaseAgentSniperLock());
+
+  /**
+   * Phân loại phản hồi đăng ký từ DKHP cho Agent
+   */
+  function classifyDkhpRegResponse(regRes, targetMaLHP) {
+    if (!regRes) {
+      return {
+        ok: false,
+        retryable: true,
+        state: "err",
+        isGateWait: false,
+        isConflict: false,
+        isCoReq: false,
+        msg: "Không nhận được phản hồi từ DKHP (Kiểm tra kết nối/đăng nhập)",
+      };
+    }
+    if (regRes && typeof regRes === "object" && regRes.check === true) {
+      return {
+        ok: true,
+        retryable: false,
+        state: "ok",
+        isGateWait: false,
+        isConflict: false,
+        isCoReq: false,
+        msg: `Đăng ký thành công [${targetMaLHP}]`,
+      };
+    }
+    const rawMsg = String(
+      (regRes && (regRes.message || regRes.Message)) || (typeof regRes === "string" ? regRes : "") || "Máy chủ từ chối đăng ký"
+    ).trim();
+    const lower = rawMsg.toLowerCase();
+
+    // 1. Cổng chưa mở / ngoài thời gian (BẮT BUỘC kiểm tra TRƯỚC "không đủ điều kiện")
+    const isGateWait =
+      lower.includes("thời gian") ||
+      lower.includes("chưa mở") ||
+      lower.includes("chưa đến giờ") ||
+      lower.includes("ngoài thời gian");
+    if (isGateWait) {
+      return { ok: false, retryable: true, state: "wait", isGateWait: true, isConflict: false, isCoReq: false, msg: rawMsg };
+    }
+
+    // 2. Trùng lịch học (chống Fake OK)
+    const isConflict =
+      lower.includes("trùng lịch") ||
+      lower.includes("trùng giờ") ||
+      lower.includes("trùng ca");
+    if (isConflict) {
+      return { ok: false, retryable: false, state: "err", isGateWait: false, isConflict: true, isCoReq: false, msg: rawMsg };
+    }
+
+    // 3. Lớp đầy / khóa / hết sĩ số
+    const isFullOrLocked =
+      lower.includes("đầy") ||
+      lower.includes("hết chỗ") ||
+      lower.includes("sĩ số") ||
+      lower.includes("đủ số lượng") ||
+      lower.includes("khóa") ||
+      lower.includes("tạm khóa");
+    if (isFullOrLocked) {
+      return { ok: false, retryable: true, state: "wait", isGateWait: false, isConflict: false, isCoReq: false, msg: rawMsg };
+    }
+
+    // 4. Môn học đã đăng ký trong đợt (chống Fake OK: không được dính trùng lịch hoặc đủ số lượng)
+    const isAlreadyReg =
+      (lower.includes("môn học này đã đăng ký") ||
+        lower.includes("học phần này đã được đăng ký") ||
+        lower.includes("đã đăng ký trong đợt") ||
+        lower.includes("trùng môn học") ||
+        lower.includes("trùng môn")) &&
+      !lower.includes("trùng lịch") &&
+      !lower.includes("đủ số lượng");
+    if (isAlreadyReg) {
+      return { ok: true, retryable: false, state: "ok", isGateWait: false, isConflict: false, isCoReq: false, msg: rawMsg };
+    }
+
+    // 5. Yêu cầu môn học song hành (để kích hoạt Pass 2)
+    const isCoReq = lower.includes("song hành");
+    if (isCoReq) {
+      return { ok: false, retryable: true, state: "err", isGateWait: false, isConflict: false, isCoReq: true, msg: rawMsg };
+    }
+
+    // 6. Lỗi quy chế vĩnh viễn (tiên quyết, vượt tín chỉ, học phí, kỷ luật...)
+    const isPermanent =
+      lower.includes("tiên quyết") ||
+      lower.includes("học trước") ||
+      lower.includes("vượt quá số tín chỉ") ||
+      lower.includes("tín chỉ tối đa") ||
+      lower.includes("học phí") ||
+      lower.includes("công nợ") ||
+      lower.includes("không đủ điều kiện") ||
+      lower.includes("cấm thi") ||
+      lower.includes("kỷ luật");
+    if (isPermanent) {
+      return { ok: false, retryable: false, state: "err", isGateWait: false, isConflict: false, isCoReq: false, msg: rawMsg };
+    }
+
+    return { ok: false, retryable: true, state: "err", isGateWait: false, isConflict: false, isCoReq: false, msg: rawMsg };
   }
 
   function getCourseKey(item) {
     return String(item.maMonHoc || item.maHocPhan || item.maLHP || item.id || "");
   }
 
-  async function dkhpFormPost(path, paramsObj) {
+  async function dkhpFormPost(path, paramsObj, timeoutMs = 15000) {
     const body = Object.entries(paramsObj || {})
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v ?? "")}`)
       .join("&");
@@ -95,26 +222,37 @@
     let text;
     try {
       ({ res, text } = await agentEnqueue(async () => {
-        const r = await fetch(path, {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
+        return fetchWithTimeout(
+          path,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            body,
           },
-          body,
-        });
-        return { res: r, text: await r.text() };
+          timeoutMs
+        );
       }));
     } catch (e) {
       _agentFailStreak++;
       throw e;
     }
 
+    if (!res) {
+      _agentFailStreak++;
+      throw new Error("Không nhận được phản hồi");
+    }
+
     if (res.status === 403 || text.includes("Web Application Firewall")) {
       _agentBlocked = true;
       _agentFailStreak++;
       throw new Error("Cổng DKHP chặn yêu cầu (WAF/403). Đã dừng tự động để bảo vệ phiên.");
+    }
+    if (res.status >= 500 && res.status < 600) {
+      return { serverBusy: true, message: `Máy chủ quá tải (HTTP ${res.status})` };
     }
     if (!res.ok) {
       _agentFailStreak++;
@@ -203,10 +341,13 @@
 
   function isAgentClassOpen(cls) {
     if (!cls || !cls.IdLopHocPhanString) return false;
-    const trangThai = String(cls.TrangThai || cls.TrangThaiLopHocPhan || "").toLowerCase();
-    if (trangThai.includes("khóa")) return false;
+    const rawStatus = removeVietnameseTones(String(cls.TrangThai || cls.TrangThaiLopHocPhan || ""));
+    if (rawStatus.includes("da khoa") || rawStatus.includes("tam khoa") || rawStatus.includes("huy")) {
+      return false;
+    }
     const siSo = Number(cls.SiSoDangKy ?? 0);
-    const toiDa = Number(cls.SiSoToiDa ?? 999);
+    const toiDa = Number(cls.SiSoToiDa ?? 0);
+    if (toiDa <= 0 && siSo <= 0) return false;
     return toiDa <= 0 || siSo < toiDa;
   }
 
@@ -228,7 +369,7 @@
         : 0;
 
     try {
-      // Luôn gọi GetDanhSachLopHocPhan để lấy IdLopHocPhanString mới theo phiên hiện tại và kiểm tra sĩ số thực (chỉ tốn 1 request nếu lớp đầy)
+      // Luôn gọi GetDanhSachLopHocPhan để lấy IdLopHocPhanString mới theo phiên hiện tại và kiểm tra sĩ số thực
       const queryParams = resolveCourseParamsOnPage(item);
       const classes = await dkhpFormPost("/DangKyHocPhan/GetDanhSachLopHocPhan", {
         maMonHoc: queryParams.maMonHoc,
@@ -237,6 +378,14 @@
         khoaHocDangKy: queryParams.khoaHocDangKy,
         isLHPKhongTrungLich: false,
       });
+
+      if (classes && classes.serverBusy) {
+        const msg = classes.message;
+        _agentStatusByCourseKey[key] = { state: "wait", msg: `⏳ ${msg}` };
+        updateAgentCourseRowUI(key);
+        appendAgentLog(`${item.tenMonHoc}: ${msg}`, "warn");
+        return { ok: false, retryable: true, msg };
+      }
 
       const classList = Array.isArray(classes) ? classes : [];
       if (classList.length === 0) {
@@ -259,8 +408,9 @@
       if (matched) {
         if (!isAgentClassOpen(matched)) {
           const siSo = Number(matched.SiSoDangKy ?? 0);
-          const toiDa = Number(matched.SiSoToiDa ?? 999);
-          const isLocked = String(matched.TrangThai || "").toLowerCase().includes("khóa");
+          const toiDa = Number(matched.SiSoToiDa ?? 0);
+          const rawStatus = removeVietnameseTones(String(matched.TrangThai || matched.TrangThaiLopHocPhan || ""));
+          const isLocked = rawStatus.includes("da khoa") || rawStatus.includes("tam khoa") || rawStatus.includes("huy");
           if (!_agentAutoPickOpenClass) {
             const msg = isLocked
               ? `Lớp ${targetMaLHP} đang khóa (${siSo}/${toiDa})`
@@ -302,8 +452,9 @@
 
       if (!isAgentClassOpen(matched)) {
         const siSo = Number(matched.SiSoDangKy ?? 0);
-        const toiDa = Number(matched.SiSoToiDa ?? 999);
-        const isLocked = String(matched.TrangThai || "").toLowerCase().includes("khóa");
+        const toiDa = Number(matched.SiSoToiDa ?? 0);
+        const rawStatus = removeVietnameseTones(String(matched.TrangThai || matched.TrangThaiLopHocPhan || ""));
+        const isLocked = rawStatus.includes("da khoa") || rawStatus.includes("tam khoa") || rawStatus.includes("huy");
         const msg = isLocked
           ? `Lớp ${targetMaLHP} đang khóa (${siSo}/${toiDa})`
           : `Lớp ${targetMaLHP} đã đầy (${siSo}/${toiDa})`;
@@ -320,92 +471,100 @@
       item.idEncrypted = idEncrypted;
       item.maLHP = targetMaLHP;
 
-      // Kiểm tra chi tiết lớp để tự động lấy Tổ TH nếu môn có thực hành mà chưa chọn Tổ TH
-      if ((!nhomTH || nhomTH <= 0) && item._noThConfirmed !== targetMaLHP) {
+      // Kiểm tra chi tiết lớp để tự động lấy Tổ TH và các tổ khả dụng
+      let availableGroups = [];
+      if (item._noThConfirmed !== targetMaLHP) {
         try {
           const detail = await dkhpFormPost("/DangKyHocPhan/GetChiTietLopHocPhan", {
             idLopHocPhan: idEncrypted,
             maNhomTH: -1,
           });
-          if (detail && Array.isArray(detail.DSNhomThucHanh)) {
-            if (detail.DSNhomThucHanh.length > 0) {
-              nhomTH = Number(detail.DSNhomThucHanh[0].MaNhom || 1);
+          if (detail && Array.isArray(detail.DSNhomThucHanh) && detail.DSNhomThucHanh.length > 0) {
+            availableGroups = detail.DSNhomThucHanh.map((g) => Number(g.MaNhom || 1)).filter((n) => n > 0);
+            if ((!nhomTH || nhomTH <= 0) && availableGroups.length > 0) {
+              nhomTH = availableGroups[0];
               item.nhomTH = nhomTH;
-            } else {
-              item._noThConfirmed = targetMaLHP;
             }
+          } else {
+            item._noThConfirmed = targetMaLHP;
           }
         } catch (_) {}
       }
 
-      // Bước kiểm tra địa điểm phòng học (tương đương dangkyHP() của trường)
-      try {
-        await dkhpFormPost("/DangKyHocPhan/CheckKhacDiaDiemPhongBuoiHoc", {
-          idLopHocPhan: idEncrypted,
-          nhomThucHanh: nhomTH > 0 ? nhomTH : "",
-        });
-      } catch (_) {}
+      let groupsToTry = [nhomTH];
+      if (availableGroups.length > 0 && _agentAutoPickOpenClass) {
+        groupsToTry = [nhomTH, ...availableGroups.filter((g) => g !== nhomTH)];
+      }
 
-      _agentStatusByCourseKey[key] = { state: "running", msg: "🚀 Đang gửi ĐK..." };
-      updateAgentCourseRowUI(key);
+      let finalRes = null;
+      for (let gIdx = 0; gIdx < groupsToTry.length; gIdx++) {
+        const curGroup = groupsToTry[gIdx];
 
-      // Gọi endpoint đăng ký chính thức
-      const regRes = await dkhpFormPost("/DangKyHocPhan/DangKyHocPhan", {
-        idLopHocPhan: idEncrypted,
-        loaiDangky: Number(hinhThuc || 1),
-        idDot: Number(idDot),
-        nhomThucHanh: nhomTH > 0 ? nhomTH : "",
-      });
-
-      if (regRes && typeof regRes === "object" && regRes.check === true) {
-        const msg = `Đã ĐK thành công (${targetMaLHP || "LHP"})`;
-        _agentStatusByCourseKey[key] = { state: "ok", msg: `✅ ${msg}` };
-        updateAgentCourseRowUI(key);
-        appendAgentLog(`🎉 ${item.tenMonHoc}: ${msg}!`, "ok");
-        return { ok: true, retryable: false, msg };
-      } else {
-        const serverMsg = String(
-          (regRes && (regRes.message || regRes.Message)) ||
-            (typeof regRes === "string" ? regRes : "Từ chối đăng ký")
-        ).trim();
-        const lowerMsg = serverMsg.toLowerCase();
-        const isAlready =
-          lowerMsg.includes("đã đăng ký") ||
-          lowerMsg.includes("trùng môn");
-        const isPermanentRuleErr =
-          !isAlready &&
-          (lowerMsg.includes("tiên quyết") ||
-            lowerMsg.includes("học trước") ||
-            lowerMsg.includes("song hành") ||
-            lowerMsg.includes("vượt quá số tín chỉ") ||
-            lowerMsg.includes("tín chỉ tối đa") ||
-            lowerMsg.includes("không đủ điều kiện") ||
-            lowerMsg.includes("cấm thi"));
-        const isWaitSlotOrTime =
-          !isAlready &&
-          !isPermanentRuleErr &&
-          (lowerMsg.includes("đầy") ||
-            lowerMsg.includes("hết chỗ") ||
-            lowerMsg.includes("sĩ số") ||
-            lowerMsg.includes("chưa đến thời gian") ||
-            lowerMsg.includes("ngoài thời gian") ||
-            lowerMsg.includes("khóa"));
+        // Bước kiểm tra địa điểm phòng học
+        try {
+          await dkhpFormPost("/DangKyHocPhan/CheckKhacDiaDiemPhongBuoiHoc", {
+            idLopHocPhan: idEncrypted,
+            nhomThucHanh: curGroup > 0 ? curGroup : "",
+          });
+        } catch (_) {}
 
         _agentStatusByCourseKey[key] = {
-          state: isAlready ? "ok" : isWaitSlotOrTime ? "wait" : "err",
-          msg: `${isAlready ? "✅" : isWaitSlotOrTime ? "⏳" : "❌"} ${serverMsg}`,
+          state: "running",
+          msg: `🚀 Đang gửi ĐK${curGroup > 0 ? ` (Tổ ${curGroup})` : ""}...`,
         };
         updateAgentCourseRowUI(key);
-        appendAgentLog(
-          `${item.tenMonHoc}: ${serverMsg}`,
-          isAlready ? "ok" : isWaitSlotOrTime ? "warn" : "err"
+
+        // Gọi endpoint đăng ký chính thức với timeout 20s
+        const regRes = await dkhpFormPost(
+          "/DangKyHocPhan/DangKyHocPhan",
+          {
+            idLopHocPhan: idEncrypted,
+            loaiDangky: Number(hinhThuc || 1),
+            idDot: Number(idDot),
+            nhomThucHanh: curGroup > 0 ? curGroup : "",
+          },
+          20000
         );
-        return {
-          ok: isAlready,
-          retryable: !isAlready && !isPermanentRuleErr,
-          msg: serverMsg,
-        };
+
+        const classification = classifyDkhpRegResponse(regRes, targetMaLHP);
+        finalRes = classification;
+
+        if (classification.ok) {
+          if (curGroup > 0) item.nhomTH = curGroup;
+          const msg = `Đã ĐK thành công [${targetMaLHP}]${curGroup > 0 ? ` (Tổ ${curGroup})` : ""}`;
+          _agentStatusByCourseKey[key] = { state: "ok", msg: `✅ ${msg}` };
+          updateAgentCourseRowUI(key);
+          appendAgentLog(`🎉 ${item.tenMonHoc}: ${msg}!`, "ok");
+          return { ok: true, retryable: false, isCoReq: false, msg };
+        }
+
+        // Nếu lỗi do đầy/hết chỗ ở Tổ TH này và còn Tổ TH khác để thử -> xoay vòng thử tiếp
+        if (classification.state === "wait" && gIdx < groupsToTry.length - 1) {
+          appendAgentLog(
+            `${item.tenMonHoc} [${targetMaLHP} - Tổ ${curGroup}]: ${classification.msg} -> Đang tự động thử tiếp Tổ ${groupsToTry[gIdx + 1]}...`,
+            "warn"
+          );
+          await sleep(200);
+          continue;
+        }
+        break;
       }
+
+      _agentStatusByCourseKey[key] = {
+        state: finalRes.state,
+        msg: `${finalRes.state === "ok" ? "✅" : finalRes.state === "wait" ? "⏳" : "❌"} ${finalRes.msg}`,
+      };
+      updateAgentCourseRowUI(key);
+      appendAgentLog(
+        `${item.tenMonHoc}: ${finalRes.msg}`,
+        finalRes.state === "ok" ? "ok" : finalRes.state === "wait" ? "warn" : "err"
+      );
+      return {
+        ok: finalRes.ok,
+        retryable: finalRes.retryable,
+        isCoReq: finalRes.isCoReq,
+        msg: finalRes.msg,
+      };
     } catch (err) {
       const msg = err.message || "Lỗi kết nối";
       _agentStatusByCourseKey[key] = { state: "err", msg: `❌ ${msg}` };
@@ -476,18 +635,26 @@
           continue;
         }
 
+        // Đánh dấu stale các hàng lớp học cũ trong #lopHocCho trước khi click
+        document.querySelectorAll("#lopHocCho tbody tr").forEach((tr) => tr.setAttribute("data-iuh-stale", "1"));
+
         courseRow.scrollIntoView({ behavior: "smooth", block: "center" });
         courseRow.click();
-        await sleep(600);
 
-        // Chờ danh sách lớp #lopHocCho hiển thị
+        // Chờ danh sách lớp mới #lopHocCho hiển thị (kiểm tra không bị stale)
         let classRows = [];
-        for (let w = 0; w < 14; w++) {
-          classRows = Array.from(
-            document.querySelectorAll("#lopHocCho tbody tr.lophoctr")
-          );
-          if (classRows.length > 0) break;
+        for (let w = 0; w < 16; w++) {
           await sleep(250);
+          const matchingRows = maMH ? Array.from(document.querySelectorAll(`#lopHocCho tbody tr.mh_${CSS.escape(maMH)}`)) : [];
+          if (matchingRows.length > 0) {
+            classRows = matchingRows;
+            break;
+          }
+          const freshRows = Array.from(document.querySelectorAll("#lopHocCho tbody tr.lophoctr:not([data-iuh-stale])"));
+          if (freshRows.length > 0) {
+            classRows = freshRows;
+            break;
+          }
         }
 
         if (classRows.length === 0) {
@@ -525,15 +692,18 @@
           continue;
         }
 
+        // Đánh dấu stale các chi tiết lớp cũ trong #chiTietLopHoc trước khi click lớp
+        document.querySelectorAll("#chiTietLopHoc tbody tr").forEach((tr) => tr.setAttribute("data-iuh-stale", "1"));
+
         targetRow.scrollIntoView({ behavior: "smooth", block: "center" });
         targetRow.click();
 
         // Chờ TimLopHocChiTiet nạp xong bảng #chiTietLopHoc và mở khóa nút #dkMonHoc
-        for (let w = 0; w < 14; w++) {
+        for (let w = 0; w < 16; w++) {
           await sleep(250);
-          const ctRows = document.querySelectorAll("#chiTietLopHoc tbody tr");
+          const freshCtRows = document.querySelectorAll("#chiTietLopHoc tbody tr:not([data-iuh-stale])");
           const dkBtnCheck = document.getElementById("dkMonHoc");
-          if (ctRows.length > 0 && dkBtnCheck && !dkBtnCheck.disabled) break;
+          if (freshCtRows.length > 0 && dkBtnCheck && !dkBtnCheck.disabled) break;
         }
         await sleep(150);
 
@@ -559,25 +729,55 @@
         if (dkBtn && !dkBtn.disabled) {
           dkBtn.click();
 
-          // Chờ và tự động bấm nút Xác nhận trên SweetAlert2 nếu có cảnh báo khác cơ sở/phòng học
-          for (let s = 0; s < 6; s++) {
-            await sleep(250);
+          // Chờ và tự động xử lý SweetAlert2: xác nhận địa điểm khác & đọc thông báo thật
+          let popupMessage = "";
+          let popupSuccess = false;
+          for (let s = 0; s < 12; s++) {
+            await sleep(300);
             const swalConfirm = document.querySelector(
               ".swal2-container .swal2-confirm:not(:disabled)"
             );
-            if (swalConfirm && swalConfirm.offsetParent !== null) {
+            const swalTitle = document.querySelector(".swal2-container #swal2-title, .swal2-container .swal2-title");
+            const swalContent = document.querySelector(".swal2-container #swal2-content, .swal2-container .swal2-html-container");
+            const titleText = (swalTitle?.textContent || "").toLowerCase();
+            const contentText = swalContent?.textContent || "";
+
+            if (titleText.includes("xác nhận") && swalConfirm && swalConfirm.offsetParent !== null) {
               swalConfirm.click();
+              await sleep(400);
+              continue;
+            }
+
+            if (contentText || titleText) {
+              popupMessage = (swalTitle?.textContent ? `${swalTitle.textContent}: ` : "") + contentText;
+              if (titleText.includes("thành công") || contentText.toLowerCase().includes("thành công")) {
+                popupSuccess = true;
+              }
+              if (swalConfirm && swalConfirm.offsetParent !== null) {
+                swalConfirm.click();
+              }
               break;
             }
           }
 
-          await sleep(900);
+          if (!popupMessage) {
+            const lopDaDkTable = document.getElementById("lopDaDK");
+            if (lopDaDkTable && (lopDaDkTable.textContent.includes(targetMaLHP) || lopDaDkTable.textContent.includes(item.tenMonHoc))) {
+              popupSuccess = true;
+              popupMessage = `Đã thấy môn [${targetMaLHP}] trong bảng Lớp đã đăng ký`;
+            }
+          }
+
+          const classification = classifyDkhpRegResponse(popupSuccess ? { check: true } : popupMessage, targetMaLHP);
           _agentStatusByCourseKey[key] = {
-            state: "ok",
-            msg: "✅ Đã nhấn Đăng ký!",
+            state: classification.state,
+            msg: `${classification.state === "ok" ? "✅" : classification.state === "wait" ? "⏳" : "❌"} ${classification.msg}`,
           };
           updateAgentCourseRowUI(key);
-          appendAgentLog(`✅ Đã hoàn tất thao tác DOM cho ${item.tenMonHoc}`, "ok");
+          appendAgentLog(
+            `${item.tenMonHoc}: ${classification.msg}`,
+            classification.state === "ok" ? "ok" : classification.state === "wait" ? "warn" : "err"
+          );
         } else {
           await registerSingleCourseAjax(item, _agentSelectedDot, _agentHinhThuc);
         }
@@ -633,20 +833,25 @@
 
     let anySuccess = false;
     let remainingRetryable = 0;
+    const failedWithCoReqItems = [];
 
     try {
-      // Kiểm tra đợt cho phép đăng ký (chỉ ở lượt chạy tay / lượt đầu, không lặp mỗi tick sniper)
-      if (!isSniperTick) {
-        try {
-          const dotCheck = await dkhpFormPost("/DangKyHocPhan/CheckDotChoPhepDangKy", {
-            idDot: Number(_agentSelectedDot),
-          });
-          if (typeof dotCheck === "string" && dotCheck.trim().length > 0) {
-            appendAgentLog(`ℹ️ Thông báo đợt ĐK: ${dotCheck.trim()}`, "warn");
+      // 1. Kiểm tra trạng thái cổng đăng ký bằng 1 request nhẹ
+      try {
+        const dotCheck = await dkhpFormPost("/DangKyHocPhan/CheckDotChoPhepDangKy", {
+          idDot: Number(_agentSelectedDot),
+        });
+        const checkStr = typeof dotCheck === "string" ? dotCheck.trim() : (dotCheck?.message || "");
+        if (checkStr.length > 0) {
+          const lower = checkStr.toLowerCase();
+          if (lower.includes("thời gian") || lower.includes("chưa mở") || lower.includes("chưa đến giờ")) {
+            appendAgentLog(`⏳ Cổng DKHP đợt ${_agentSelectedDot} chưa mở: "${checkStr}" — Đang tiếp tục canh...`, "warn");
+            return;
           }
-        } catch (_) {}
-      }
+        }
+      } catch (_) {}
 
+      // 2. Pass 1
       for (const item of selectedItems) {
         const key = getCourseKey(item);
         if (_agentStatusByCourseKey[key]?.state === "ok") continue;
@@ -658,8 +863,9 @@
         );
         if (res.ok) {
           anySuccess = true;
-        } else if (res.retryable) {
-          remainingRetryable++;
+        } else {
+          if (res.isCoReq) failedWithCoReqItems.push(item);
+          if (res.retryable) remainingRetryable++;
         }
         if (agentShouldAbortSniper()) {
           appendAgentLog(
@@ -672,6 +878,28 @@
           break;
         }
         await sleep(180);
+      }
+
+      // 3. Pass 2 (Song hành)
+      if (anySuccess && failedWithCoReqItems.length > 0) {
+        appendAgentLog(
+          "🔄 Có môn đã đăng ký thành công! Đang kích hoạt Lượt 2 (Pass 2) để tự động đăng ký lại các môn có yêu cầu Song hành...",
+          "info"
+        );
+        for (const coReqItem of failedWithCoReqItems) {
+          const key = getCourseKey(coReqItem);
+          if (_agentStatusByCourseKey[key]?.state === "ok") continue;
+          const res2 = await registerSingleCourseAjax(
+            coReqItem,
+            _agentSelectedDot,
+            _agentHinhThuc
+          );
+          if (res2.ok) {
+            anySuccess = true;
+            remainingRetryable = Math.max(0, remainingRetryable - 1);
+          }
+          await sleep(180);
+        }
       }
     } finally {
       _agentIsRunning = false;
@@ -689,45 +917,52 @@
   }
 
   async function toggleAgentSniperMode() {
-    if (_agentSniperIntervalId) {
-      stopAgentSniperMode();
-      appendAgentLog("⏹️ Đã dừng chế độ Canh Slot tự động.", "warn");
-      return;
-    }
+    if (_agentSniperToggling) return;
+    _agentSniperToggling = true;
 
-    const secInput = document.getElementById("iuh-agent-sniper-sec");
-    _agentSniperIntervalSec = Math.max(
-      AGENT_SNIPER_MIN_SEC,
-      parseInt(secInput?.value || String(AGENT_SNIPER_MIN_SEC), 10) || AGENT_SNIPER_MIN_SEC
-    );
-    if (secInput) secInput.value = String(_agentSniperIntervalSec);
-
-    // Chỉ cho phép 1 sniper chạy tại một thời điểm (Dashboard hoặc trang DKHP)
-    const gotLock = await acquireAgentSniperLock(_agentSniperIntervalSec);
-    if (!gotLock) {
-      appendAgentLog(
-        "⚠️ Đang có một Canh Slot khác chạy (trên tab Dashboard). Hãy dừng nó trước khi bật ở đây.",
-        "warn"
-      );
-      return;
-    }
-    _agentFailStreak = 0;
-    _agentBlocked = false;
-
-    appendAgentLog(
-      `🎯 Đã bật Canh Slot tự động (thử lại mỗi ${_agentSniperIntervalSec} giây)...`,
-      "ok"
-    );
-    _agentSniperIntervalId = setInterval(() => {
-      if (agentShouldAbortSniper()) {
+    try {
+      if (_agentSniperIntervalId) {
         stopAgentSniperMode();
+        appendAgentLog("⏹️ Đã dừng chế độ Canh Slot tự động.", "warn");
         return;
       }
-      heartbeatAgentSniperLock();
-      runBatchDirectAjax(true);
-    }, _agentSniperIntervalSec * 1000);
-    runBatchDirectAjax(false);
-    updateAgentButtonsState();
+
+      const secInput = document.getElementById("iuh-agent-sniper-sec");
+      _agentSniperIntervalSec = Math.max(
+        AGENT_SNIPER_MIN_SEC,
+        parseInt(secInput?.value || String(AGENT_SNIPER_MIN_SEC), 10) || AGENT_SNIPER_MIN_SEC
+      );
+      if (secInput) secInput.value = String(_agentSniperIntervalSec);
+
+      // Chỉ cho phép 1 sniper chạy tại một thời điểm (Dashboard hoặc trang DKHP)
+      const gotLock = await acquireAgentSniperLock(_agentSniperIntervalSec);
+      if (!gotLock) {
+        appendAgentLog(
+          "⚠️ Đang có một Canh Slot khác chạy (trên tab Dashboard). Hãy dừng nó trước khi bật ở đây.",
+          "warn"
+        );
+        return;
+      }
+      _agentFailStreak = 0;
+      _agentBlocked = false;
+
+      appendAgentLog(
+        `🎯 Đã bật Canh Slot tự động (thử lại mỗi ${_agentSniperIntervalSec} giây)...`,
+        "ok"
+      );
+      _agentSniperIntervalId = setInterval(() => {
+        if (agentShouldAbortSniper()) {
+          stopAgentSniperMode();
+          return;
+        }
+        heartbeatAgentSniperLock();
+        runBatchDirectAjax(true);
+      }, _agentSniperIntervalSec * 1000);
+      runBatchDirectAjax(false);
+      updateAgentButtonsState();
+    } finally {
+      _agentSniperToggling = false;
+    }
   }
 
   function stopAgentSniperMode() {

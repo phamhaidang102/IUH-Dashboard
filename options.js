@@ -1,9 +1,9 @@
-﻿// options.js — Hex Color Picker System
+// options.js — Hex Color Picker System
 // Migrated from ID-based (11 colors) to free hex color system
 
 document.addEventListener("DOMContentLoaded", () => {
   // =========================================================================
-  // GOOGLE CALENDAR PRESET COLORS (14 main colors shown in UI)
+  // GOOGLE CALENDAR PRESET COLORS
   // =========================================================================
   const GC_PRESETS = [
     { hex: "#d50000", name: "Tomato" },
@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { hex: "#33b679", name: "Sage" },
     { hex: "#0b8043", name: "Basil" },
     { hex: "#7cb342", name: "Avocado" },
-    { hex: "#33b679", name: "Eucalyptus" },
+    { hex: "#009688", name: "Eucalyptus" },
     { hex: "#039be5", name: "Peacock" },
     { hex: "#3f51b5", name: "Blueberry" },
     { hex: "#7986cb", name: "Lavender" },
@@ -186,7 +186,6 @@ document.addEventListener("DOMContentLoaded", () => {
       updateSVThumb();
       updateHueThumb();
     }
-    // Commit to hidden input + swatch
     if (activeKey) commitColor(activeKey, hex);
   }
 
@@ -200,9 +199,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function commitColor(key, hex) {
+    const trigger = document.getElementById("trigger-" + key);
     const hidden = document.getElementById("color-" + key);
     const swatch = document.getElementById("swatch-" + key);
     const display = document.getElementById("hexdisplay-" + key);
+    if (trigger) trigger.dataset.hex = hex;
     if (hidden) hidden.value = hex;
     if (swatch) swatch.style.background = hex;
     if (display) display.textContent = hex;
@@ -213,17 +214,19 @@ document.addEventListener("DOMContentLoaded", () => {
     activeKey = key;
     const rect = trigger.getBoundingClientRect();
     const panelW = 280;
-    let left = rect.left;
+    let left = Math.max(8, rect.left);
     let top = rect.bottom + 6;
     if (left + panelW > window.innerWidth)
-      left = window.innerWidth - panelW - 8;
-    if (top + 420 > window.innerHeight) top = rect.top - 420 - 6;
+      left = Math.max(8, window.innerWidth - panelW - 8);
+    if (top + 420 > window.innerHeight) top = Math.max(8, rect.top - 420 - 6);
     panel.style.left = left + "px";
     panel.style.top = top + "px";
     panel.classList.add("visible");
 
     const currentHex =
-      document.getElementById("color-" + key)?.value || DEFAULT_COLORS[key];
+      trigger?.dataset?.hex ||
+      document.getElementById("color-" + key)?.value ||
+      DEFAULT_COLORS[key];
     const hsv = hexToHsv(currentHex);
     pickerHue = hsv.h;
     pickerS = hsv.s;
@@ -251,8 +254,8 @@ document.addEventListener("DOMContentLoaded", () => {
     hsvVisible = !hsvVisible;
     hsvArea.style.display = hsvVisible ? "block" : "none";
     toggleHsvBtn.textContent = hsvVisible
-      ? "\u25b2 \u1ea8n b\u1ea3ng m\u00e0u tu\u1ef3 ch\u1ec9nh"
-      : "\u25bc M\u1edf b\u1ea3ng m\u00e0u tu\u1ef3 ch\u1ec9nh";
+      ? "▲ Ẩn bảng màu tuỳ chỉnh"
+      : "▼ Mở bảng màu tuỳ chỉnh";
     if (hsvVisible) {
       drawSVCanvas();
       drawHueCanvas();
@@ -385,18 +388,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const user = userInp.value.trim();
     const pass = passInp.value.trim();
 
-    if (!url || !user || !pass) {
+    if (autoFillToggle.checked && (!user || !pass)) {
       status.style.color = "red";
-      status.innerText =
-        "\u274c Th\u1ea5t b\u1ea1i: Vui l\u00f2ng \u0111i\u1ec1n \u0111\u1ea7y \u0111\u1ee7 th\u00f4ng tin t\u00e0i kho\u1ea3n v\u00e0 API tr\u01b0\u1edbc khi l\u01b0u!";
+      status.textContent =
+        "❌ Thất bại: Vui lòng điền đầy đủ MSSV và Mật khẩu (hoặc tắt Tự động điền tài khoản)!";
       return;
     }
 
     const customColorsObj = {};
     COLOR_KEYS.forEach((key) => {
-      const hidden = document.getElementById("color-" + key);
+      const triggerHex = document.getElementById("trigger-" + key)?.dataset?.hex;
+      const hiddenHex = document.getElementById("color-" + key)?.value;
+      const candidate = triggerHex || hiddenHex;
       customColorsObj[key] =
-        hidden && isValidHex(hidden.value) ? hidden.value : DEFAULT_COLORS[key];
+        candidate && isValidHex(candidate) ? candidate : DEFAULT_COLORS[key];
     });
 
     chrome.storage.sync.set(
@@ -404,7 +409,7 @@ document.addEventListener("DOMContentLoaded", () => {
         webAppUrl: url,
         iuhUser: user,
         iuhPass: pass,
-        autoSyncEnabled: autoSyncToggle.checked,
+        autoSyncEnabled: Boolean(url) && autoSyncToggle.checked,
         autoFillInfo: autoFillToggle.checked,
         autoCaptcha: autoCaptchaToggle.checked,
         autoClickLogin: autoClickToggle.checked,
@@ -412,11 +417,12 @@ document.addEventListener("DOMContentLoaded", () => {
       },
       () => {
         status.style.color = "#0f9d58";
-        status.innerText =
-          "\ud83d\ude80 H\u1ec7 th\u1ed1ng ghi nh\u1eadn: \u0110\u00e3 c\u1eadp nh\u1eadt v\u00e0 l\u01b0u c\u1ea5u h\u00ecnh th\u00e0nh c\u00f4ng!";
+        status.textContent = url
+          ? "🚀 Hệ thống ghi nhận: Đã cập nhật và lưu cấu hình thành công!"
+          : "✅ Đã lưu tài khoản & cấu hình! (Đồng bộ Google Calendar sẽ bật khi thêm link GAS)";
         setTimeout(() => {
-          status.innerText = "";
-        }, 3000);
+          status.textContent = "";
+        }, 3500);
       },
     );
   });
@@ -434,12 +440,12 @@ document.addEventListener("DOMContentLoaded", () => {
         eyeIcon.innerHTML =
           '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
         eyeIcon.setAttribute("stroke", "#0056b3");
-        togglePassword.setAttribute("title", "\u1ea8n m\u1eadt kh\u1ea9u");
+        togglePassword.setAttribute("title", "Ẩn mật khẩu");
       } else {
         eyeIcon.innerHTML =
           '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
         eyeIcon.setAttribute("stroke", "#666");
-        togglePassword.setAttribute("title", "Hi\u1ec7n m\u1eadt kh\u1ea9u");
+        togglePassword.setAttribute("title", "Hiện mật khẩu");
       }
     });
   }
@@ -451,8 +457,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnStartSurvey) {
     btnStartSurvey.addEventListener("click", async () => {
       surveyStatus.style.display = "block";
-      surveyStatus.textContent =
-        "\u0110ang ghi nh\u1eadn c\u1edd hi\u1ec7u ho\u1ea1t \u0111\u1ed9ng...";
+      surveyStatus.textContent = "Đang ghi nhận cờ hiệu hoạt động...";
 
       await chrome.storage.local.set({
         iuh_auto_survey_running: true,
@@ -461,7 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       surveyStatus.textContent =
-        "\u0110ang ki\u1ec3m tra v\u00e0 \u0111i\u1ec1u h\u01b0\u1edbng \u0111\u1ebfn trang kh\u1ea3o s\u00e1t...";
+        "Đang kiểm tra và điều hướng đến trang khảo sát...";
 
       chrome.tabs.query({ url: "*://sv.iuh.edu.vn/*" }, (tabs) => {
         if (tabs.length > 0) {

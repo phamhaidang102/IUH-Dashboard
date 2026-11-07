@@ -13,8 +13,35 @@ chrome.storage.sync.get(
       sessionStorage.setItem("iuh_auto_sync_active", "true");
     }
 
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const userField = document.querySelector("#UserName");
+    const passField = document.querySelector("#Password");
+    const loginForm = document.getElementById("frmLogin") || document.getElementById("form-login");
+    const currentPath = window.location.pathname.toLowerCase();
+    const isLoginPage =
+      Boolean(userField && passField) ||
+      Boolean(loginForm) ||
+      currentPath.includes("dang-nhap") ||
+      currentPath.includes("login");
+
+    // Nếu KHÔNG phải trang đăng nhập -> Đã đăng nhập thành công!
+    // Reset bộ đếm retry và báo cho background.js biết nếu đang khôi phục Session
+    if (!isLoginPage) {
+      sessionStorage.removeItem("iuh_login_retry_count");
+      if (isGhostTab) {
+        sessionStorage.removeItem("iuh_auto_sync_active");
+      }
+      try {
+        chrome.runtime.sendMessage({ action: "iuhSessionVerifiedAuthenticated" }, () => {
+          const ignoreErr = chrome.runtime.lastError;
+        });
+      } catch (_) {}
+      return;
+    }
+
     // =========================================================================
-    // 🛡️ TÍNH NĂNG: LÀM MỚI TRANG NẾU LỖI ĐĂNG NHẬP (MAX 5 LẦN)
+    // 🛡️ TÍNH NĂNG: LÀM MỚI TRANG NẾU LỖI ĐĂNG NHẬP (MAX 5 LẦN CHỈ TRÊN TRANG LOGIN)
     // =========================================================================
     let retryCount = parseInt(
       sessionStorage.getItem("iuh_login_retry_count") || "0",
@@ -23,34 +50,23 @@ chrome.storage.sync.get(
 
     if (retryCount >= 5) {
       console.warn(
-        "[IUH Sync] 🔄 Đã vượt quá 5 lần thử đăng nhập. Đang tiến hành Refresh...",
+        "[IUH Sync] 🔄 Đã vượt quá 5 lần thử đăng nhập. Đang tiến hành dừng vòng lặp...",
       );
 
       // Reset bộ đếm VÀ XÓA LUÔN CỜ AUTO SYNC TRONG SESSION ĐỂ CẮT VÒNG LẶP
       sessionStorage.removeItem("iuh_login_retry_count");
       sessionStorage.removeItem("iuh_auto_sync_active");
-
-      setTimeout(() => {
-        // Thay vì reload giữ params cũ, ta đẩy thẳng về trang chủ để cắt đứt URL Params (?auto_sync_mode=1)
-        window.location.href = window.location.pathname;
-      }, 1000);
-
       return;
     }
 
-    // Xóa dòng gán trùng lặp (duplicate) trong code cũ của bạn
     sessionStorage.setItem(
       "iuh_login_retry_count",
       (retryCount + 1).toString(),
     );
     // =========================================================================
 
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-    const userField = document.querySelector("#UserName");
-    const passField = document.querySelector("#Password");
     const loginBtn = document.querySelector(
-      '.authfy-panel.active #form-login input[type="submit"]',
+      '.authfy-panel.active #form-login input[type="submit"], #form-login input[type="submit"], #frmLogin input[type="submit"], #frmLogin button[type="submit"]',
     );
 
     let hasFilledSuccessfully = false;
