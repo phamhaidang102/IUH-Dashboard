@@ -6,7 +6,8 @@
   "permissions": [
     "storage",
     "alarms",
-    "tabs"
+    "tabs",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "*://sv.iuh.edu.vn/*",
@@ -32,7 +33,7 @@
       "js": ["survey_agent.js"]
     },
     {
-      "matches": ["*://dkhp.iuh.edu.vn/DangKyHocPhan*"],
+      "matches": ["*://dkhp.iuh.edu.vn/*"],
       "js": ["dkhp_agent.js"]
     }
   ],

@@ -32,6 +32,7 @@
     16: "20:40",
     17: "21:30",
     18: "22:20",
+    19: "23:10",
   };
 
   // Bảng màu hex mặc định Fallback (hex tự do, hỗ trợ toàn bộ bảng màu mới của Google Calendar)
@@ -85,9 +86,12 @@
   // =========================================================================
   function waitForNextWeek(oldDate) {
     return new Promise((resolve) => {
+      let ticks = 0;
+      const maxTicks = 80; // Tối đa 8 giây để tránh kẹt setInterval vô tận
       const check = setInterval(() => {
+        ticks++;
         const newDate = document.getElementById("firstDateOffWeek")?.value;
-        if (newDate && newDate !== oldDate) {
+        if ((newDate && newDate !== oldDate) || ticks >= maxTicks) {
           clearInterval(check);
           setTimeout(resolve, 800);
         }
@@ -187,6 +191,10 @@
       updateSyncWidget(
         "❌ Thất bại: Thiếu link Google Apps Script trong cấu hình!",
         "error",
+      );
+      setTimeout(
+        () => document.dispatchEvent(new CustomEvent("IuhSyncComplete")),
+        1200,
       );
       return;
     }

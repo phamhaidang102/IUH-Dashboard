@@ -432,23 +432,41 @@ window.pushPlannedCoursesToGradeSimulator = function (
     });
   };
 
+  // 1. Ưu tiên các môn Đã ĐK chính thức (regRows) trước
+  const regSubjectKeys = new Set();
+  regRows.forEach((r) => {
+    const code = String(r.MaLopHocPhan || r.MaLHP || "").trim();
+    const maMH = String(r.MaMonHoc || "").trim();
+    if (code) regSubjectKeys.add(code);
+    if (maMH) regSubjectKeys.add(maMH);
+    if (code.length >= 10) regSubjectKeys.add(code.substring(0, 10));
+    if (code.length >= 10) regSubjectKeys.add(code.substring(4, 10));
+    const soTC = parseInt(r.SoTinChi || r.SoTC || r.DVHT || 0, 10) || 0;
+    const hasTH = r.MaNhomThucHanh != null && Number(r.MaNhomThucHanh) > 0;
+    addSubject(code, r.TenMonHoc, soTC, hasTH && soTC > 1, hasTH && soTC === 1);
+  });
+
+  // 2. Thêm các môn Dự kiến (plannedList) CHƯA có trong danh sách chính thức
   plannedList.forEach((p) => {
+    const pCode = String(p.maLHP || p.maHocPhan || p.maMonHoc || "").trim();
+    const pMaMH = String(p.maMonHoc || "").trim();
+    const pMaHP = String(p.maHocPhan || "").trim();
+    if (
+      (pCode && regSubjectKeys.has(pCode)) ||
+      (pMaMH && regSubjectKeys.has(pMaMH)) ||
+      (pMaHP && regSubjectKeys.has(pMaHP))
+    ) {
+      return; // Bỏ qua môn đã có trong danh sách chính thức để tránh nhân đôi tín chỉ
+    }
     const tcLT = Number(p.tcLT ?? p.soTC ?? 0);
     const tcTH = Number(p.tcTH ?? 0);
     addSubject(
-      p.maLHP || p.maHocPhan || p.maMonHoc,
+      pCode,
       p.tenMonHoc,
       p.soTC,
       tcLT > 0 && tcTH > 0,
       tcLT === 0 && tcTH > 0
     );
-  });
-
-  regRows.forEach((r) => {
-    const code = r.MaLopHocPhan || r.MaLHP || "";
-    const soTC = parseInt(r.SoTinChi || r.SoTC || r.DVHT || 0, 10) || 0;
-    const hasTH = r.MaNhomThucHanh != null && Number(r.MaNhomThucHanh) > 0;
-    addSubject(code, r.TenMonHoc, soTC, hasTH && soTC > 1, hasTH && soTC === 1);
   });
 
   // Thay thế học kỳ mô phỏng cũ của cùng đợt (nếu có) hoặc thêm vào cuối bảng điểm

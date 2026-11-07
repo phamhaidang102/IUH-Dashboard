@@ -355,7 +355,7 @@
       <h2>⚙️ BẢNG ĐIỀU KHIỂN EXTENSION IUH SYNC</h2>
 
       <div class="section">
-        <div class="section-title">🔗 Cấu hình API & Tài khoản</div>
+        <div class="section-title">🔗 Cấu hình API &amp; Tài khoản</div>
 
         <label>Mã số sinh viên (MSSV):</label>
         <input
@@ -416,7 +416,7 @@
           </span>
         </div>
 
-        <label>Link Google Apps Script (GAS):</label>
+        <label>Link Google Apps Script (GAS — Tùy chọn):</label>
         <input
           type="text"
           id="scriptUrl"
@@ -481,6 +481,16 @@
 
           <div class="color-item" style="grid-column: span 2">
             <label>Lịch Tạm ngưng:</label>
+            <div
+              class="color-picker-trigger"
+              id="trigger-tam-ngung"
+              data-key="tam-ngung"
+            >
+              <div class="color-swatch" id="swatch-tam-ngung"></div>
+              <span class="color-hex-display" id="hexdisplay-tam-ngung"
+                >#d50000</span
+              >
+            </div>
           </div>
         </div>
       </div>
@@ -555,8 +565,6 @@
       </div>
     </div>
 
-    <script src="options.js"></script>
-
     <!-- Floating Color Picker Panel (shared, positioned by JS) -->
     <div class="color-picker-panel" id="color-picker-panel">
       <div class="preset-label">Thư viện màu Google Calendar</div>
@@ -599,5 +607,7 @@
         />
       </div>
     </div>
+
+    <script src="options.js"></script>
   </body>
 </html>
