@@ -1,129 +1,178 @@
 # 🎓 IUH Alternative Dashboard
 
+[![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue?style=flat-square)](https://developer.chrome.com/docs/extensions/mv3/intro/)
+[![TensorFlow.js](https://img.shields.io/badge/TensorFlow.js-Client--Side-orange?style=flat-square)](https://www.tensorflow.org/js)
+[![Chart.js](https://img.shields.io/badge/Chart.js-3.9.1-coral?style=flat-square)](https://www.chartjs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+
 ## 📌 Giới thiệu
 
-**IUH Alternative Dashboard** là một tiện ích mở rộng (_Chrome Extension_) sử dụng kiến trúc **Manifest V3**, được thiết kế để thay thế hoàn toàn giao diện mặc định cũ kỹ của cổng thông tin sinh viên Đại học Công nghiệp TP.HCM (IUH).
+**IUH Alternative Dashboard** là tiện ích mở rộng (*Chrome Extension*) xây dựng trên chuẩn **Manifest V3**, thay thế hoàn toàn giao diện mặc định cũ kỹ của cổng thông tin sinh viên Đại học Công nghiệp TP.HCM (IUH - `sv.iuh.edu.vn` & `dkhp.iuh.edu.vn`).
 
-Tiến hóa từ dự án đồng bộ lịch học, phiên bản này lột xác thành một **Single Page Application (SPA)** hiện đại, trực quan và chạy 100% ngầm ở phía Client (No-Server). Hệ thống kết hợp kỹ thuật Web Scraping an toàn và trí tuệ nhân tạo (AI) để mang lại trải nghiệm quản lý học tập tối ưu, tự động hóa và bảo mật tuyệt đối cho sinh viên.
+Dự án phát triển theo mô hình **Single Page Application (SPA)** hiện đại, hoạt động **100% ngầm tại Client (No-Server)**. Ứng dụng kết hợp kỹ thuật Web Scraping an toàn, kết nối trực tiếp API đào tạo PMT-EMS, và mô hình Trí tuệ Nhân tạo (*TensorFlow.js*) chạy trên trình duyệt nhằm đem lại trải nghiệm học tập, quản lý điểm số và đăng ký học phần mượt mà, tự động hóa cao và an toàn tuyệt đối.
 
 ---
 
 ## ✨ Tính năng nổi bật
 
-- 🤖 **AI Captcha Solver & Auto-Login:** Kế thừa sức mạnh từ phiên bản trước, tiện ích tích hợp sẵn mô hình Học máy (_TensorFlow.js_ thông qua `tf.min.js`) chạy trực tiếp trên trình duyệt để bẻ khóa mã Captcha và tự động đăng nhập mượt mà.
-- 📊 **Quản lý Điểm số & Tiến Độ Học Tập:**
-  - Tự động gửi lệnh `fetch()` ngầm trang kết quả học tập để cào danh sách ID của tất cả học kỳ.
-  - Lọc bỏ các môn học trùng (chỉ giữ điểm cao nhất của môn cải thiện/học lại).
-  - Tính toán tổng số tín chỉ tích lũy, GPA hệ 10 và hệ 4. Hiển thị thông qua thanh tiến trình (Progress Bar) động.
-- 📈 **Phân Tích Điểm Trung Bình Lớp Học Phần:** Gửi request ngầm mô phỏng hành vi click vào chi tiết môn học. Đếm số lượng sinh viên đạt điểm A, B, C, D, F và tính vị trí xếp hạng. Trực quan hóa dữ liệu bằng biểu đồ cột (Bar Chart) thông qua thư viện `Chart.js` (`libs/chart.umd.js`).
-- 📝 **Khảo Sát Tự Động (Auto Survey):** Quét ngầm các phiếu đánh giá chưa hoàn thành. Tự động điền form với thuật toán trộn ngẫu nhiên tỉ lệ 80-20 giữa mức "Rất hài lòng" và "Hài lòng" nhằm qua mặt hệ thống Bot-detection, sau đó tự động kích hoạt sự kiện `.click()` nộp bài.
-- 🎨 **Thay Thế Giao Diện (UI Overrider):** Chặn đứng quá trình render giao diện gốc của trường ngay khi truy cập `sv.iuh.edu.vn/home.html`, phủ lên một lớp overlay nạp nội dung từ `dashboard/portal.html` với thiết kế Sidebar điều hướng, thẻ Card số liệu và hiệu ứng Dark Mode responsive.
+### 1. ⚡ Bộ công cụ Đăng ký học phần (DKHP Ultimate Suite)
+* 📅 **Lập kế hoạch & Xếp Thời khóa biểu trực quan (Interactive LHP Planner):**
+  * Tra cứu toàn bộ môn học từ **Chương trình khung (CTK)** theo từng học kỳ.
+  * Xem trước ma trận lịch học dạng lưới tuần (Thứ 2 đến Chủ nhật, Tiết 1 đến 16).
+  * **Ghost Preview:** Di chuột qua từng lớp mở để xem trước vị trí ca học trên lưới thời khóa biểu.
+* 🔍 **Quét lớp mở DKHP trực tiếp (Direct PMT-EMS API):**
+  * Gọi trực tiếp endpoint `/DangKyHocPhan/GetDanhSachLopHocPhan` để tải danh sách lớp mở, sĩ số thực, giảng viên, phòng học và thời gian biểu.
+  * Hỗ trợ tra cứu và hiển thị danh sách lớp mở của **môn học phần đã bị áp cứng** (vốn bị ẩn trên giao diện web mặc định của trường).
+* ⚠️ **Phát hiện trùng lịch học thông minh (Conflict Detection):**
+  * Tự động kiểm tra chéo xung đột tiết học giữa tất cả các môn đã ghim, phân tích đồng thời cả **ca Lý thuyết** và **ca Thực hành**.
+* 💰 **Dự toán Tín chỉ & Học phí học kỳ:**
+  * Bóc tách chính xác số tín chỉ Lý thuyết (LT) và Thực hành (TH).
+  * Tự động suy luận đơn giá và tính tổng học phí dự kiến cần nộp.
+* 🚀 **Đăng ký tức thời lúc mở cổng (Zero-Hour 1-Click Speed-Run):**
+  * Tự động nhận diện đợt mở đăng ký (`CheckDotChoPhepDangKy`).
+  * Gửi lệnh đăng ký hàng loạt toàn bộ môn trong kế hoạch chỉ với **1-Click**, hoàn tất trong vài giây.
+* 🎯 **Chế độ Bắn tỉa canh slot (Sniper Mode / Drop Hunting):**
+  * Thăm dò định kỳ sĩ số thực tế của các lớp đã đầy (Full slot).
+  * Bắt khoảnh khắc mili-giây khi có sinh viên nhả slot (Drop/Cancel) để tự động bắn lệnh đăng ký ngay lập tức.
+  * Tự động chuyển đổi sang lớp dự phòng nếu lớp chính bị khóa hoặc không còn chỗ (`autoPickOpenClass`).
+* 🛡️ **Bảo vệ phiên & Điều tốc thông minh:**
+  * **Hàng đợi request (dkhpEnqueue):** Giới hạn tần suất gửi lệnh, chống nghẽn mạng và chống kích hoạt Cloudflare WAF / HTTP 403.
+  * **Exponential Backoff:** Tự động giãn cách nhịp gửi khi server trường có dấu hiệu quá tải.
+  * **Mutex Lock:** Đồng bộ khóa phiên độc quyền giữa tab Dashboard và trang web gốc, ngăn chặn xung đột đăng ký trùng lặp.
 
 ---
 
-## 🧩 Kiến trúc hoạt động (No-Server Workflow)
+### 2. 🤖 AI Captcha Solver & Auto-Login
+* Tích hợp sẵn mô hình Deep Learning (*TensorFlow.js* - `tf.min.js`) xử lý hình ảnh Captcha trực tiếp trên trình duyệt, không cần gửi ảnh về server ngoài.
+* Nhận diện và điền tự động mã Captcha tại các cổng `sv.iuh.edu.vn` và `dkhp.iuh.edu.vn`.
+* Tự động duy trì phiên đăng nhập (Keep-alive), ngăn chặn việc bị văng tài khoản vào các khung giờ cao điểm.
 
-Hệ thống hoạt động hoàn toàn độc lập trên trình duyệt của người dùng, không phụ thuộc vào bất kỳ Server trung gian nào:
+---
+
+### 3. 📊 Quản lý Điểm số, GPA & Biểu đồ Phổ điểm LHP
+* Tự động quét và phân tích điểm của tất cả học kỳ trong suốt khóa học.
+* Tự động lọc trùng môn (ưu tiên điểm cao nhất của môn học cải thiện / học lại).
+* Tính toán tổng tín chỉ tích lũy, GPA hệ 10 và hệ 4, trực quan hóa tiến độ tích lũy qua thanh Progress Bar.
+* **Phổ điểm môn học:** Truy xuất ngầm dữ liệu điểm của toàn bộ sinh viên trong lớp học phần, trực quan hóa tỷ lệ A, B, C, D, F và thứ hạng bằng biểu đồ cột `Chart.js`.
+
+---
+
+### 4. 📝 Tự động Khảo sát đánh giá (Auto Survey)
+* Quét toàn bộ phiếu khảo sát giảng viên chưa hoàn thành.
+* Thuật toán Smart Random pha trộn tỷ lệ 80% mức "Rất hài lòng" và 20% "Hài lòng", giúp vượt qua các cơ chế phát hiện tự động của cổng thông tin và tự động nộp bài.
+
+---
+
+### 5. 📅 Đồng bộ Lịch học sang Google Calendar
+* Kết nối với backend Google Apps Script (GAS) triển khai riêng của cá nhân.
+* Đồng bộ toàn bộ thời khóa biểu, lịch thi sang Google Calendar với mã màu phân loại trực quan (Lý thuyết, Thực hành, Lịch thi, Trực tuyến, Tạm hoãn).
+* Nhắc nhở lịch học trước giờ lên lớp qua thông báo điện thoại.
+
+---
+
+## 🧩 Kiến trúc hệ thống (No-Server Client Architecture)
 
 ```text
-[Website Lịch Trường IUH]
-          │
-          ▼
-[Content Script - Chặn Render UI gốc & Tiêm Portal SPA overlay]
-          │
-          ▼
-[Bridge.js - Giao tiếp giữa MAIN world và Extension Context]
-          │
-          ▼
-[Client Script - Fetch ngầm (Rate Limiting) & Giải mã AI]
-          │
-          ▼
-[Lưu trữ cục bộ an toàn vào chrome.storage.local (Caching)]
-          │
-          ▼
-[Dashboard SPA - Hiển thị DOM Parser & Vẽ biểu đồ Chart.js]
+[Cổng Đào tạo IUH (sv.iuh.edu.vn / dkhp.iuh.edu.vn)]
+                        │
+                        ▼
+    ┌──────────────────────────────────────────────┐
+    │           Content Scripts & Agents           │
+    │  - content.js / autologin.js (Chặn UI cũ)    │
+    │  - dkhp_agent.js (Tiêm thanh công cụ DKHP)   │
+    │  - survey_agent.js (Xử lý khảo sát)          │
+    │  - tf.min.js (AI bẻ khóa Captcha)            │
+    └──────────────────────────────────────────────┘
+                        │
+                        ▼
+    ┌──────────────────────────────────────────────┐
+    │       Core Engine & Storage (Client-side)    │
+    │  - background.js (Service Worker MV3)        │
+    │  - chrome.storage.local (Cache TKB, CTK, ĐK) │
+    │  - Mutex Lock / Request Queue & Backoff      │
+    └──────────────────────────────────────────────┘
+                        │
+                        ▼
+    ┌──────────────────────────────────────────────┐
+    │       IUH Dashboard SPA (portal.html)        │
+    │  - portal.js / portal.css (Giao diện SPA)    │
+    │  - dkhp-api.js (Bộ API & Thuật toán Sniper)  │
+    │  - grade-scraper.js (Quét điểm & GPA)        │
+    │  - Chart.js (Vẽ biểu đồ phổ điểm)            │
+    └──────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🛠️ Hướng dẫn Cài đặt & Triển khai
+## 🛠️ Hướng dẫn Cài đặt & Sử dụng
 
-### 1️⃣ Triển khai Google Apps Script (Phía Server)
-
-Để lưu trữ và gán màu lịch học lên tài khoản Google của bạn, hãy tạo một cổng kết nối API:
-
-1. Truy cập vào **Google Apps Script** và tạo một dự án mới.
-2. Tạo file script và dán toàn bộ mã nguồn xử lý sự kiện từ file `/gas/Code.js` trong thư mục dự án này vào.
-3. Bấm vào nút **Deploy (Triển khai)** ở góc trên cùng bên phải `-->` Chọn **New deployment (Triển khai mới)**.
-4. Chọn loại cấu hình là **Web app (Ứng dụng web)**:
-   - _Execute as (Thực thi dưới danh nghĩa):_ **Me (Tôi)**
-   - _Who has access (Người có quyền truy cập):_ **Anyone (Bất kỳ ai)**
-5. Bấm **Deploy**, tiến hành cấp quyền truy cập lịch nếu Google yêu cầu, sau đó sao chép lại đoạn **Web App URL** được cấp.
-
-> ⚠️ **Lưu ý cực kỳ quan trọng:** Mỗi lần bạn chỉnh sửa mã nguồn trên Google Apps Script, bạn bắt buộc phải chọn **Manage Deployments (Quản lý bản triển khai)** `-->` Bấm biểu tượng **Cây bút** `-->` Chọn **New Version (Phiên bản mới)** thì code mới thực sự có hiệu lực đằng sau Web App.
+### 1️⃣ Cài đặt Extension vào trình duyệt
+1. Clone hoặc tải mã nguồn dự án về máy tính:
+   ```bash
+   git clone https://github.com/phamhaidang102/IUH-Dashboard.git
+   ```
+2. Mở trình duyệt Google Chrome (hoặc Edge, Brave, Cốc Cốc...) và truy cập:
+   ```text
+   chrome://extensions/
+   ```
+3. Bật công tắc **Developer mode (Chế độ nhà phát triển)** ở góc trên bên phải.
+4. Bấm **Load unpacked (Tải tiện ích đã giải nén)** và chọn thư mục dự án chứa file `manifest.json`.
 
 ---
 
-### 2️⃣ Cài đặt Chrome Extension (Phía Client)
-
-1. Tải toàn bộ mã nguồn của dự án này về máy tính của bạn và giải nén.
-2. Mở trình duyệt Google Chrome (hoặc Edge, Brave, Opera...) và truy cập đường dẫn: `chrome://extensions/`.
-3. Bật công tắc **Developer mode (Chế độ nhà phát triển)** ở góc trên bên phải giao diện.
-4. Bấm vào nút **Load unpacked (Tải tiện ích đã giải nén)** ở góc trái và trỏ tới thư mục chứa mã nguồn Extension của bạn.
-
----
-
-### 3️⃣ Cấu hình Dashboard để chạy ứng dụng
-
-1. Click vào biểu tượng Extension IUH trên thanh công cụ của trình duyệt để mở **Bảng điều khiển (Dashboard)**.
-2. Tiến hành cấu hình các thông số:
-   - Dán link **Google Apps Script WebApp URL** đã copy ở Bước 1 vào ô API.
-   - Nhập tài khoản **MSSV** và **Mật khẩu** sinh viên của bạn vào ô tương ứng.
-   - Bật/Tắt các nút gạt tự động điền thông tin, tự động giải Captcha bằng AI theo nhu cầu sử dụng.
-   - Lựa chọn màu sắc phân loại (Lý thuyết, Thực hành, Trực tuyến, Lịch thi, Lịch hoãn) bằng các ô chọn trực quan.
-3. Bấm nút **LƯU TOÀN BỘ CẤU HÌNH** để hệ thống đồng bộ ghi nhận dữ liệu vào bộ nhớ của Chrome.
+### 2️⃣ Thiết lập thông tin cá nhân
+1. Click vào biểu tượng Extension IUH trên thanh tiện ích để mở trang **Cài đặt (Options)**.
+2. Nhập **MSSV** và **Mật khẩu** sinh viên.
+3. Tùy chỉnh bật/tắt các tính năng:
+   * *Tự động đăng nhập & Giải Captcha bằng AI*
+   * *Tự động làm khảo sát*
+   * *Cấu hình màu sắc đồng bộ Google Calendar*
+4. Dán URL **Google Apps Script Web App** (nếu sử dụng tính năng đồng bộ lịch học).
+5. Bấm **Lưu toàn bộ cấu hình**.
 
 ---
 
-## 📅 Phân loại màu sắc mặc định (Mốc ban đầu)
-
-Khi khởi tạo hoặc chưa có cấu hình riêng, hệ thống tự động gán các màu sắc đặc trưng bao gồm:
-
-- 🔘 **Môn Lý thuyết:** Màu _Graphite (Xám)_
-- 🌿 **Môn Thực hành:** Màu _Sage (Xanh lá nhạt)_
-- 🔵 **Môn Trực tuyến:** Màu _Blueberry (Xanh dương)_
-- 🟡 **Lịch Thi:** Màu _Banana (Vàng)_
-- 🔴 **Tạm ngưng / Hoãn:** Màu _Tomato (Đỏ)_
+### 3️⃣ Hướng dẫn sử dụng Đăng ký học phần & Sniper
+1. Mở trang sinh viên hoặc truy cập Dashboard: `chrome-extension://<EXTENSION_ID>/dashboard/portal.html`.
+2. Chuyển sang mục **Đăng ký học phần**:
+   * **Lập kế hoạch trước giờ G:** Vào tab *Chương trình khung* hoặc *Lịch học dự kiến*, bấm **Quét lớp mở DKHP** để xem sĩ số và thời khóa biểu từng lớp. Bấm **Ghim vào lịch dự kiến** để xếp TKB và kiểm tra trùng lịch.
+   * **Đăng ký tức thời (20:00:00):** Trước giờ mở cổng, mở sẵn tab Dashboard. Khi cổng mở, nhấn nút **🚀 Tự động Đăng ký toàn bộ** để hoàn tất đăng ký trong 1 cú click.
+   * **Canh slot lớp Full (Sniper):** Thêm mã lớp học phần vào danh sách, bấm **Bật Sniper**. Hệ thống sẽ tự động quét ngầm và nộp đơn ngay khi có vị trí trống.
 
 ---
 
 ## 📂 Cấu trúc thư mục dự án
 
 ```text
-iuh-calendar-sync/
+IUH-Dashboard/
 ├── dashboard/
-│   ├── grade-scraper.js
-│   ├── portal.css
-│   ├── portal.html
-│   └── portal.js
+│   ├── dkhp-api.js         # API kết nối DKHP, thuật toán kiểm tra trùng lịch, Sniper & Bộ xếp TKB
+│   ├── grade-scraper.js    # Cào điểm, tính toán GPA và phân tích phổ điểm
+│   ├── portal.css          # Giao diện hiện đại (Modern Responsive, Glassmorphism, Dark/Light Mode)
+│   ├── portal.html         # Khung giao diện chính SPA Dashboard
+│   └── portal.js           # Bộ điều hướng, xử lý sự kiện và render giao diện Dashboard
 ├── GAS/
-│   └── Code.js
-├── tfjs_model/
+│   └── Code.js             # Mã nguồn Google Apps Script đồng bộ dữ liệu với Google Calendar
+├── tfjs_model/             # Trọng số mô hình Machine Learning giải mã Captcha IUH
 │   ├── group1-shard1of3.bin
 │   ├── group1-shard2of3.bin
 │   ├── group1-shard3of3.bin
 │   └── model.json
-├── autologin.js
-├── background.js
-├── bridge.js
-├── content.js
-├── manifest.json
-├── options.html
-├── options.js
-├── README.md
-├── survey_agent.js
-└── tf.min.js
+├── autologin.js            # Tự động hóa đăng nhập và kích hoạt model Captcha
+├── background.js           # Service Worker nền tảng Manifest V3
+├── bridge.js               # Cầu nối dữ liệu giữa MAIN world và Extension Context
+├── content.js              # Content script chặn render giao diện cũ tại sv.iuh.edu.vn
+├── dkhp_agent.js           # Content script hỗ trợ thao tác tự động tại cổng dkhp.iuh.edu.vn
+├── manifest.json           # Tệp cấu hình phân quyền và tài nguyên Extension MV3
+├── options.html            # Giao diện trang cấu hình tài khoản và thiết lập tiện ích
+├── options.js              # Logic lưu trữ và quản lý cấu hình tiện ích
+├── README.md               # Tài liệu hướng dẫn sử dụng và giới thiệu dự án
+├── survey_agent.js         # Tác tử tự động giải quyết các biểu mẫu khảo sát đánh giá
+└── tf.min.js               # Thư viện TensorFlow.js rút gọn cho môi trường Extension
 ```
 
-📌 Disclaimer (Miễn trừ trách nhiệm)
-Dự án này được phát triển hoàn toàn vì mục đích học tập, nghiên cứu ứng dụng công nghệ học máy (TensorFlow.js) chạy trên Client và hỗ trợ nâng cao trải nghiệm cá nhân, quản lý thời gian hiệu quả cho sinh viên IUH. Tác giả hoàn toàn không chịu bất kỳ trách nhiệm nào liên quan đến việc sử dụng công cụ này sai mục đích hoặc vi phạm các quy chế hệ thống thông tin của nhà trường.
+---
+
+## 📌 Disclaimer (Miễn trừ trách nhiệm)
+
+Dự án này được phát triển với mục đích học tập, nghiên cứu ứng dụng công nghệ Client-side Deep Learning (*TensorFlow.js*) và tối ưu hóa trải nghiệm cá nhân trong học tập cho sinh viên IUH. Tác giả hoàn toàn không chịu bất kỳ trách nhiệm nào liên quan đến việc sử dụng công cụ sai mục đích hoặc vi phạm các quy chế hệ thống công nghệ thông tin của nhà trường.
