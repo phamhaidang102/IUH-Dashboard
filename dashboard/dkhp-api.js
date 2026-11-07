@@ -1135,10 +1135,123 @@ function getDanhSachDotDangKy() {
   ];
 }
 
+/**
+ * Tải trực tiếp trang HTML /DangKyHocPhan qua mạng ngầm (Background Fetch)
+ * và bóc tách bảng #lopDaDK mà KHÔNG CẦN người dùng phải mở tab dkhp.iuh.edu.vn.
+ */
+async function fetchAndParseLopDaDkFromHtml(idDot) {
+  try {
+    const { res, text } = await dkhpEnqueue(async () => {
+      return fetchWithTimeout(
+        `${DKHP_BASE}/DangKyHocPhan`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+        },
+        15000
+      );
+    });
+
+    if (!res || !res.ok || !text) return null;
+    if (text.includes("frmLogin") || !text.includes("lopDaDK")) return null;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, "text/html");
+    const table = doc.getElementById("lopDaDK");
+    if (!table) return [];
+
+    const rows = [];
+    const trs = table.querySelectorAll("tbody tr");
+    trs.forEach((tr) => {
+      const tds = tr.querySelectorAll("td");
+      if (tds.length < 3) return;
+
+      let maLHP = "";
+      let tenMon = "";
+      let lopDuKien = "";
+      let soTC = 0;
+      let maNhomTH = 0;
+      let hocPhi = 0;
+
+      tds.forEach((td, idx) => {
+        const txt = td.textContent.trim();
+        const m12 = txt.match(/\b\d{10,12}\b/);
+        if (m12 && !maLHP) maLHP = m12[0];
+        if (!tenMon && idx >= 1 && idx <= 3 && txt.length > 4 && !/^\d+$/.test(txt)) tenMon = txt;
+        if (/^\d{1,2}$/.test(txt) && Number(txt) > 0 && Number(txt) <= 12 && soTC === 0 && idx >= 2 && idx <= 5) soTC = Number(txt);
+        if (txt.toLowerCase().includes("nhóm") || txt.toLowerCase().includes("tổ")) {
+          const tm = txt.match(/\d+/);
+          if (tm) maNhomTH = Number(tm[0]);
+        }
+        const feeMatch = txt.replace(/[,.]/g, "").match(/\b\d{6,8}\b/);
+        if (feeMatch && hocPhi === 0) hocPhi = Number(feeMatch[0]);
+        if (txt.match(/^[A-Z0-9]{5,15}$/) && !maLHP.includes(txt) && !lopDuKien && idx >= 2) lopDuKien = txt;
+      });
+
+      if (maLHP || tenMon) {
+        rows.push({
+          MaLopHocPhan: maLHP,
+          MaLHP: maLHP,
+          TenMonHoc: tenMon,
+          LopDuKien: lopDuKien,
+          SoTinChi: soTC || 3,
+          MaNhomThucHanh: maNhomTH,
+          HocPhi: hocPhi,
+          TrangThaiLopHocPhan: "Đã đăng ký",
+        });
+      }
+    });
+
+    console.log(`[DKHP] Đã bóc tách ${rows.length} môn từ HTML /DangKyHocPhan ngầm thành công!`);
+    return rows;
+  } catch (err) {
+    console.warn("[DKHP] Lỗi fetchAndParseLopDaDkFromHtml:", err);
+    return null;
+  }
+}
+
 /** Lấy danh sách lớp học phần đã ĐK trong học kỳ chỉ định (idDot) */
 async function fetchLopHocPhanDaDangKy(idDot) {
-  const body = idDot ? `idDot=${encodeURIComponent(idDot)}` : "";
-  return _dkhpPost("/DangKyHocPhan/GetDanhSachLopHocPhanDaDangKy", body);
+  // 1. Đồng bộ trực tiếp từ tab dkhp.iuh.edu.vn đang mở (nếu có)
+  try {
+    const tabs = await new Promise((resolve) => {
+      chrome.tabs.query({ url: "*://dkhp.iuh.edu.vn/*" }, (t) => resolve(t || []));
+    });
+    if (Array.isArray(tabs) && tabs.length > 0) {
+      const resp = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabs[0].id, { action: "getLopDaDK", idDot }, (r) => {
+          if (chrome.runtime.lastError || !r) resolve(null);
+          else resolve(r);
+        });
+      });
+      if (resp && Array.isArray(resp.rows) && resp.rows.length > 0) {
+        console.log(`[DKHP] Đã kéo ${resp.rows.length} môn từ bảng #lopDaDK trên tab dkhp.iuh.edu.vn!`);
+        return resp.rows;
+      }
+    }
+  } catch (_) {}
+
+  // 2. Không cần mở tab: Gửi GET /DangKyHocPhan ngầm và parse bảng #lopDaDK
+  const backgroundRows = await fetchAndParseLopDaDkFromHtml(idDot);
+  if (Array.isArray(backgroundRows) && backgroundRows.length > 0) {
+    return backgroundRows;
+  }
+
+  // 3. Lấy từ storage đã được lưu trước đó
+  const stored = await new Promise((resolve) =>
+    chrome.storage.local.get(["iuh_lhp_data_by_dot", "iuh_lhp_data"], resolve)
+  );
+  if (stored.iuh_lhp_data_by_dot?.[idDot]?.rows?.length > 0) {
+    return stored.iuh_lhp_data_by_dot[idDot].rows;
+  }
+  if (stored.iuh_lhp_data?.length > 0) {
+    return stored.iuh_lhp_data;
+  }
+
+  return [];
 }
 
 /** Lấy chi tiết lịch học của 1 lớp. */
@@ -3942,13 +4055,9 @@ async function loadLhpTab(forceRefresh = false, targetIdDot = null) {
     );
 
     if (bundledData === null) {
-      if (_lhpDataByDotCache[activeIdDot] || (_lhpPlannedByDot[activeIdDot]?.length || 0) > 0) {
-        alert("Lỗi xác thực: Vui lòng đăng nhập trang DKHP để tải dữ liệu mới nhất.");
-        showOnly(tableSectionEl);
-        refreshLhpPlannerView(activeIdDot);
-      } else {
-        showOnly(authGateEl);
-      }
+      console.warn(`[DKHP] Không tải được dữ liệu mới từ máy chủ cho đợt ${activeIdDot}. Sử dụng dữ liệu hiện có.`);
+      showOnly(tableSectionEl);
+      refreshLhpPlannerView(activeIdDot);
       return;
     }
 
@@ -4246,6 +4355,58 @@ function isClassOpenForRegistration(cls) {
   return toiDa <= 0 || siSo < toiDa;
 }
 
+function addCourseToRegisteredCache(activeIdDot, item, targetMaLHP, curGroup, chosenCls) {
+  const dot = String(activeIdDot);
+  if (!_lhpDataByDotCache[dot]) {
+    _lhpDataByDotCache[dot] = {
+      idDot: dot,
+      rows: [],
+      schedules: [],
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  const regObj = _lhpDataByDotCache[dot];
+  if (!Array.isArray(regObj.rows)) regObj.rows = [];
+  if (!Array.isArray(regObj.schedules)) regObj.schedules = [];
+
+  const existingRowIdx = regObj.rows.findIndex(
+    (r) => (r.MaLopHocPhan || r.MaLHP) === targetMaLHP
+  );
+
+  const newRow = {
+    IdLopHocPhanString: item.idEncrypted || chosenCls?.IdLopHocPhanString || "",
+    MaLopHocPhan: targetMaLHP,
+    TenMonHoc: item.tenMonHoc || chosenCls?.TenMonHoc || "(Không tên)",
+    MaMonHoc: item.maMonHoc || "",
+    MaHocPhan: item.maHocPhan || "",
+    MaNhomThucHanh: curGroup || item.nhomTH || 0,
+    SoTinChi: item.soTC || chosenCls?.SoTinChi || 3,
+    LopDuKien: item.lopDuKien || chosenCls?.LopDuKien || "",
+    TrangThaiLopHocPhan: "Đã đăng ký",
+    schedules: item.schedules || [],
+  };
+
+  if (existingRowIdx >= 0) {
+    regObj.rows[existingRowIdx] = { ...regObj.rows[existingRowIdx], ...newRow };
+  } else {
+    regObj.rows.push(newRow);
+  }
+
+  if (Array.isArray(item.schedules) && item.schedules.length > 0) {
+    regObj.schedules = [
+      ...regObj.schedules.filter((s) => s.maLHP !== targetMaLHP),
+      ...item.schedules,
+    ];
+  }
+
+  chrome.storage.local.set({
+    iuh_lhp_data_by_dot: _lhpDataByDotCache,
+    iuh_lhp_data: regObj.rows,
+  });
+
+  refreshLhpPlannerView(dot);
+}
+
 /**
  * Thực thi đăng ký 1 môn học từ Clipboard qua Direct API
  */
@@ -4447,6 +4608,7 @@ async function executeSingleCourseAutoReg(item, activeIdDot, hinhThuc, autoPickO
 
     if (classification.ok) {
       if (curGroup > 0) item.nhomTH = curGroup;
+      addCourseToRegisteredCache(activeIdDot, item, targetMaLHP, curGroup, chosenCls);
       _autoRegStatusByCourseId[item.id] = {
         state: "ok",
         msg: `✅ Thành công (${targetMaLHP}${curGroup > 0 ? ` - T${curGroup}` : ""})`,

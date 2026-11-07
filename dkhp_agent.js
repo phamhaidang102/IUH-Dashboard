@@ -1183,6 +1183,96 @@
       ?.addEventListener("click", () => runDomClickAutomation());
   }
 
+  function scrapeLopDaDK() {
+    const table = document.getElementById("lopDaDK");
+    if (!table) return [];
+    const trs = table.querySelectorAll("tbody tr");
+    if (trs.length === 0) return [];
+
+    const rows = [];
+    trs.forEach((tr) => {
+      const tds = tr.querySelectorAll("td");
+      if (tds.length < 3) return;
+
+      let maLHP = "";
+      let tenMon = "";
+      let lopDuKien = "";
+      let soTC = 0;
+      let maNhomTH = 0;
+      let hocPhi = 0;
+
+      tds.forEach((td, idx) => {
+        const txt = td.textContent.trim();
+        // 1. Tìm Mã LHP (chuỗi 10 - 12 chữ số)
+        const m12 = txt.match(/\b\d{10,12}\b/);
+        if (m12 && !maLHP) {
+          maLHP = m12[0];
+        }
+        // 2. Tên môn học (chuỗi chữ dài hơn 4 ký tự, không phải số, thường ở cột 1-3)
+        if (!tenMon && idx >= 1 && idx <= 3 && txt.length > 4 && !/^\d+$/.test(txt)) {
+          tenMon = txt;
+        }
+        // 3. Số tín chỉ (1 - 10)
+        if (/^\d{1,2}$/.test(txt) && Number(txt) > 0 && Number(txt) <= 12 && soTC === 0 && idx >= 2 && idx <= 5) {
+          soTC = Number(txt);
+        }
+        // 4. Nhóm thực hành
+        if (txt.toLowerCase().includes("nhóm") || txt.toLowerCase().includes("tổ")) {
+          const tm = txt.match(/\d+/);
+          if (tm) maNhomTH = Number(tm[0]);
+        } else if (/^\d{1,2}$/.test(txt) && Number(txt) > 0 && soTC > 0 && maNhomTH === 0 && idx >= 4) {
+          maNhomTH = Number(txt);
+        }
+        // 5. Học phí (dạng 1,234,000 hoặc 1234000)
+        const feeMatch = txt.replace(/[,.]/g, "").match(/\b\d{6,8}\b/);
+        if (feeMatch && hocPhi === 0) {
+          hocPhi = Number(feeMatch[0]);
+        }
+        // 6. Lớp dự kiến (VD: DHKTPM18A...)
+        if (txt.match(/^[A-Z0-9]{5,15}$/) && !maLHP.includes(txt) && !lopDuKien && idx >= 2) {
+          lopDuKien = txt;
+        }
+      });
+
+      if (maLHP || tenMon) {
+        rows.push({
+          MaLopHocPhan: maLHP,
+          MaLHP: maLHP,
+          TenMonHoc: tenMon,
+          LopDuKien: lopDuKien,
+          SoTinChi: soTC || 3,
+          MaNhomThucHanh: maNhomTH,
+          HocPhi: hocPhi,
+          TrangThaiLopHocPhan: "Đã đăng ký",
+        });
+      }
+    });
+
+    if (rows.length > 0) {
+      chrome.storage.local.get("iuh_lhp_data_by_dot", (r) => {
+        const cached = r?.iuh_lhp_data_by_dot || {};
+        const dot = _agentSelectedDot || "65";
+        cached[dot] = cached[dot] || { idDot: String(dot), rows: [], schedules: [] };
+        rows.forEach((newR) => {
+          const exIdx = cached[dot].rows.findIndex(
+            (e) => (e.MaLopHocPhan || e.MaLHP) === newR.MaLopHocPhan
+          );
+          if (exIdx >= 0) {
+            cached[dot].rows[exIdx] = { ...cached[dot].rows[exIdx], ...newR };
+          } else {
+            cached[dot].rows.push(newR);
+          }
+        });
+        chrome.storage.local.set({
+          iuh_lhp_data_by_dot: cached,
+          iuh_lhp_data: cached[dot].rows,
+        });
+      });
+    }
+
+    return rows;
+  }
+
   async function initDkhpAgent() {
     // Trích xuất thụ động _iDSV từ inline script trên trang /DangKyHocPhan (nếu có) để lưu vào storage
     try {
@@ -1195,6 +1285,27 @@
         }
       }
     } catch (_) {}
+
+    // Tự động cào bảng lớp đã đăng ký khi mở trang dkhp.iuh.edu.vn
+    scrapeLopDaDK();
+
+    // Quan sát biến động bảng #lopDaDK (sau khi đăng ký / hủy môn) để cập nhật sang Dashboard
+    const lopDaDkEl = document.getElementById("lopDaDK");
+    if (lopDaDkEl) {
+      const obs = new MutationObserver(() => {
+        scrapeLopDaDK();
+      });
+      obs.observe(lopDaDkEl, { childList: true, subtree: true });
+    }
+
+    // Lắng nghe yêu cầu lấy dữ liệu từ Dashboard
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === "getLopDaDK") {
+        const rows = scrapeLopDaDK();
+        sendResponse({ ok: true, rows });
+        return true;
+      }
+    });
 
     const stored = await new Promise((resolve) =>
       chrome.storage.local.get(
