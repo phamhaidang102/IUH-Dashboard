@@ -146,11 +146,12 @@ Dự án phát triển theo mô hình **Single Page Application (SPA)** hiện �
 ```text
 IUH-Dashboard/
 ├── dashboard/
-│   ├── dkhp-api.js         # API kết nối DKHP, thuật toán kiểm tra trùng lịch, Sniper & Bộ xếp TKB
-│   ├── grade-scraper.js    # Cào điểm, tính toán GPA và phân tích phổ điểm
-│   ├── portal.css          # Giao diện hiện đại (Modern Responsive, Glassmorphism, Dark/Light Mode)
-│   ├── portal.html         # Khung giao diện chính SPA Dashboard
-│   └── portal.js           # Bộ điều hướng, xử lý sự kiện và render giao diện Dashboard
+│   ├── grade-scraper.js
+│   ├── portal.css
+│   ├── portal.html
+|   ├── grade-scraper.js
+|   ├── dkhp-api.js
+│   └── portal.js
 ├── GAS/
 │   └── Code.js             # Mã nguồn Google Apps Script đồng bộ dữ liệu với Google Calendar
 ├── tfjs_model/             # Trọng số mô hình Machine Learning giải mã Captcha IUH
