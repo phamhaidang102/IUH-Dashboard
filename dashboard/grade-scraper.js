@@ -9,24 +9,53 @@ function lamTronDiemIUH(diem) {
   else return phanNguyen + 1.0;
 }
 
+async function fetchHtmlWithTimeout(url, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    return { ok: res.ok, status: res.status, url: res.url || "", text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchAndProcessGrades() {
   try {
-    // Fetch ngầm song song 2 trang cùng lúc (Cực nhanh)
-    const [resGrades, resDash] = await Promise.all([
-      fetch("https://sv.iuh.edu.vn/ket-qua-hoc-tap.html"),
-      fetch("https://sv.iuh.edu.vn/dashboard.html"),
-    ]);
-
-    const htmlGrades = await resGrades.text();
-    const htmlDash = await resDash.text();
+    // Gọi tuần tự để tránh khóa ASP.NET SessionState và phát hiện sớm phiên hết hạn
+    const resGrades = await fetchHtmlWithTimeout(
+      "https://sv.iuh.edu.vn/ket-qua-hoc-tap.html",
+      15000,
+    );
+    const htmlGrades = resGrades.text || "";
 
     if (
+      resGrades.status === 401 ||
+      resGrades.url.toLowerCase().includes("dang-nhap") ||
+      resGrades.url.toLowerCase().includes("login") ||
       htmlGrades.includes('id="frmLogin"') ||
+      htmlGrades.includes('id="UserName"') ||
       htmlGrades.includes("dang-nhap")
     ) {
       console.warn("[IUH Scraper] Phiên đăng nhập hết hạn!");
       return "REQUIRE_LOGIN";
     }
+    if (!resGrades.ok) {
+      console.warn("[IUH Scraper] Máy chủ trả về HTTP lỗi:", resGrades.status);
+      return null;
+    }
+
+    const resDash = await fetchHtmlWithTimeout(
+      "https://sv.iuh.edu.vn/dashboard.html",
+      12000,
+    ).catch(() => ({ ok: false, text: "" }));
+    const htmlDash = resDash.ok ? resDash.text : "";
     const parser = new DOMParser();
 
     // 1. BÓC TÁCH TÍN CHỈ TỪ TRANG DASHBOARD
@@ -40,8 +69,8 @@ async function fetchAndProcessGrades() {
       const textTC = chartDiv.nextElementSibling.innerText.trim(); // "81/163"
       const parts = textTC.split("/");
       if (parts.length === 2) {
-        tcHienTai = parseInt(parts[0]);
-        tcTong = parseInt(parts[1]);
+        tcHienTai = parseInt(parts[0], 10) || 0;
+        tcTong = parseInt(parts[1], 10) || 130;
       }
     }
 
@@ -73,21 +102,22 @@ async function fetchAndProcessGrades() {
         const tenHP = cells[2].innerText.trim();
         const soTC = parseInt(cells[3].innerText.trim(), 10);
 
-        const isExcludedFromGPA = /quốc phòng|thể chất|tiếng anh|anh văn/i.test(
-          tenHP,
-        );
+        const isExcludedFromGPA =
+          /quốc phòng|thể chất|(?:tiếng anh|anh văn)(?!\s*chuyên ngành)/i.test(
+            tenHP,
+          );
         const isTotNghiep = /thực tập doanh nghiệp|khóa luận tốt nghiệp/i.test(
           tenHP,
         );
 
         const getDiemRaw = (title) => {
           const cell = row.querySelector(`td[title="${title}"]`);
-          return cell && cell.innerText.trim()
-            ? parseFloat(cell.innerText.trim().replace(",", "."))
-            : null;
+          if (!cell || !cell.innerText.trim()) return null;
+          const parsed = parseFloat(cell.innerText.trim().replace(",", "."));
+          return Number.isFinite(parsed) ? parsed : null;
         };
 
-        //Điểm thường kì
+        // Điểm thường kỳ
         let tkArr = [];
         let tkValid = [];
         for (let i = 1; i <= 6; i++) {
@@ -96,11 +126,11 @@ async function fetchAndProcessGrades() {
           if (sc !== null) tkValid.push(sc);
         }
         const diemGK =
-          getDiemRaw("DiemChuyenCan1") ||
-          getDiemRaw("DiemGiuaKy") ||
+          getDiemRaw("DiemChuyenCan1") ??
+          getDiemRaw("DiemGiuaKy") ??
           getDiemRaw("DiemGK");
 
-        //Điểm thực hành
+        // Điểm thực hành
         let thArr = [];
         let thValid = [];
         for (let i = 1; i <= 4; i++) {
@@ -145,26 +175,24 @@ async function fetchAndProcessGrades() {
           isDat = false;
         }
 
-        if (diem10_Local !== null || diemThi === null) {
-          currentSemester.subjects.push({
-            maHP,
-            tenHP,
-            soTC,
-            isExcludedFromGPA,
-            isTotNghiep,
-            isTichHop,
-            isThucHanhThuan,
-            tk: tkArr,
-            th: thArr,
-            diemGK,
-            diemThi,
-            diem10: diem10_Local,
-            diem4: diem4_Local,
-            diemChu: diemChu_Local,
-            xepLoai: xepLoai_Local,
-            isDat: isDat,
-          });
-        }
+        currentSemester.subjects.push({
+          maHP,
+          tenHP,
+          soTC: Number.isFinite(soTC) ? soTC : 0,
+          isExcludedFromGPA,
+          isTotNghiep,
+          isTichHop,
+          isThucHanhThuan,
+          tk: tkArr,
+          th: thArr,
+          diemGK,
+          diemThi,
+          diem10: diem10_Local,
+          diem4: diem4_Local,
+          diemChu: diemChu_Local,
+          xepLoai: xepLoai_Local,
+          isDat: isDat,
+        });
       }
     });
     if (currentSemester) semesters.push(currentSemester);

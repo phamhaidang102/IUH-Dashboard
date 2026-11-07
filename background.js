@@ -1,11 +1,61 @@
 // background.js
 
 const SYNC_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày
+const GHOST_TAB_WATCHDOG_MS = 90 * 1000; // Thu hồi Ghost Tab lịch học nếu kẹt quá 90s
 let isSyncTabSpawning = false; // Cờ khóa chống mở nhiều tab cùng lúc
+let syncWatchdogTimer = null;
 
 // ==============================================================================
-// 0. DỌN DẸP RÁC (ORPHANED STATES) KHI KHỞI ĐỘNG TRÌNH DUYỆT
+// 0. THIẾT LẬP HEADER ORIGIN/REFERER CHO REQUEST TỪ EXTENSION & DỌN DẸP RÁC
 // ==============================================================================
+async function ensureDkhpHeaderRules() {
+  if (!chrome.declarativeNetRequest || !chrome.declarativeNetRequest.updateDynamicRules) {
+    return;
+  }
+  try {
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [9001, 9002],
+      addRules: [
+        {
+          id: 9001,
+          priority: 1,
+          action: {
+            type: "modifyHeaders",
+            requestHeaders: [
+              { header: "Origin", operation: "set", value: "https://dkhp.iuh.edu.vn" },
+              { header: "Referer", operation: "set", value: "https://dkhp.iuh.edu.vn/DangKyHocPhan" },
+            ],
+          },
+          condition: {
+            urlFilter: "||dkhp.iuh.edu.vn/",
+            initiatorDomains: [chrome.runtime.id],
+            resourceTypes: ["xmlhttprequest"],
+          },
+        },
+        {
+          id: 9002,
+          priority: 1,
+          action: {
+            type: "modifyHeaders",
+            requestHeaders: [
+              { header: "Origin", operation: "set", value: "https://sv.iuh.edu.vn" },
+              { header: "Referer", operation: "set", value: "https://sv.iuh.edu.vn/dashboard.html" },
+            ],
+          },
+          condition: {
+            urlFilter: "||sv.iuh.edu.vn/",
+            initiatorDomains: [chrome.runtime.id],
+            resourceTypes: ["xmlhttprequest"],
+          },
+        },
+      ],
+    });
+  } catch (err) {
+    console.warn("[IUH Background] Không thể đăng ký DNR header rules:", err);
+  }
+}
+
+ensureDkhpHeaderRules();
 
 // Hàm dùng chung để dọn dẹp state tồn đọng từ phiên trước
 function clearZombieStates() {
@@ -17,6 +67,9 @@ function clearZombieStates() {
       "iuh_auto_survey_running",
       "iuh_survey_current_index",
       "iuh_survey_urls",
+      // Dọn khóa Sniper & cờ tự động đăng ký tồn đọng khi khởi động lại trình duyệt
+      "iuh_dkhp_sniper_lock",
+      "iuh_dkhp_autostart_pending",
     ],
     () => {
       console.log(
@@ -26,8 +79,23 @@ function clearZombieStates() {
   );
 }
 
+function armSyncTabWatchdog(tabId) {
+  if (syncWatchdogTimer) clearTimeout(syncWatchdogTimer);
+  syncWatchdogTimer = setTimeout(() => {
+    syncWatchdogTimer = null;
+    chrome.storage.local.remove(["iuh_auto_sync_active", "runningSyncTabId"]);
+    if (tabId) {
+      chrome.tabs.remove(tabId, () => {
+        const err = chrome.runtime.lastError;
+      });
+    }
+    console.warn("[IUH Background] ⏱️ Đã tự động thu hồi Ghost Tab đồng bộ lịch quá thời gian chờ.");
+  }, GHOST_TAB_WATCHDOG_MS);
+}
+
 // Chạy khi Extension được cài mới hoặc cập nhật
 chrome.runtime.onInstalled.addListener(() => {
+  ensureDkhpHeaderRules();
   // Cứ mỗi 60 phút hệ thống sẽ thức dậy kiểm tra 1 lần xem đã quá 7 ngày chưa
   chrome.alarms.create("weeklyClientSyncCheck", { periodInMinutes: 60 });
   console.log(
@@ -38,6 +106,12 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Chạy mỗi khi người dùng mở lại Google Chrome
 chrome.runtime.onStartup.addListener(() => {
+  ensureDkhpHeaderRules();
+  chrome.alarms.get("weeklyClientSyncCheck", (existing) => {
+    if (!existing) {
+      chrome.alarms.create("weeklyClientSyncCheck", { periodInMinutes: 60 });
+    }
+  });
   clearZombieStates();
 });
 
@@ -51,9 +125,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 function executePeriodicSync() {
-  chrome.storage.sync.get(["lastSyncTime", "autoSyncEnabled"], (data) => {
-    // Nếu người dùng tắt tính năng đồng bộ tự động trong cài đặt thì hủy bỏ
+  chrome.storage.sync.get(["lastSyncTime", "autoSyncEnabled", "webAppUrl"], (data) => {
+    // Nếu người dùng tắt tính năng đồng bộ tự động hoặc chưa cấu hình link GAS thì hủy bỏ
     if (data.autoSyncEnabled === false) return;
+    if (!data.webAppUrl || !String(data.webAppUrl).trim()) return;
 
     const now = Date.now();
     const lastSync = data.lastSyncTime || 0;
@@ -84,7 +159,10 @@ function executePeriodicSync() {
               pinned: true, // CHẠY NGẦM: Ghim nhỏ lại ở góc
             },
             (tab) => {
-              chrome.storage.local.set({ runningSyncTabId: tab.id });
+              if (tab && tab.id) {
+                chrome.storage.local.set({ runningSyncTabId: tab.id });
+                armSyncTabWatchdog(tab.id);
+              }
               setTimeout(() => {
                 isSyncTabSpawning = false;
               }, 2000);
@@ -111,6 +189,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       `[IUH Background] Xử lý đóng Ghost Tab sau sự kiện: ${request.action}`,
     );
 
+    if (syncWatchdogTimer) {
+      clearTimeout(syncWatchdogTimer);
+      syncWatchdogTimer = null;
+    }
+
     // Cập nhật lại mốc thời gian để 7 ngày sau Alarm mới kêu tiếp
     chrome.storage.sync.set({ lastSyncTime: Date.now() });
     chrome.storage.local.remove("iuh_auto_sync_active");
@@ -120,7 +203,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         data.runningSyncTabId || (sender.tab ? sender.tab.id : null);
       if (tabId) {
         chrome.tabs.update(tabId, { pinned: false }, () => {
+          const ignoreErr = chrome.runtime.lastError;
           chrome.tabs.remove(tabId, () => {
+            const ignoreRemoveErr = chrome.runtime.lastError;
             chrome.storage.local.remove("runningSyncTabId");
             console.log(
               "[IUH Background] ✅ Đã dọn dẹp Ghost Tab đồng bộ lịch thành công.",
@@ -156,7 +241,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             pinned: true,
           },
           (tab) => {
-            chrome.storage.local.set({ runningSyncTabId: tab.id });
+            if (tab && tab.id) {
+              chrome.storage.local.set({ runningSyncTabId: tab.id });
+              armSyncTabWatchdog(tab.id);
+            }
             setTimeout(() => {
               isSyncTabSpawning = false;
             }, 2000);
@@ -226,56 +314,82 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         pinned: true,
       },
       (tab) => {
-        const cookieCheckListener = (tabId, changeInfo, updatedTab) => {
-          if (tabId !== tab.id) return;
+        if (!tab || !tab.id) {
+          sendResponse({ success: false });
+          return;
+        }
+        let settled = false;
+        let timeoutId = null;
 
-          // Lấy URL thực tế an toàn thông qua Chrome Tabs API
-          chrome.tabs.get(tabId, (currentTab) => {
-            if (chrome.runtime.lastError || !currentTab || !currentTab.url)
-              return;
-
-            const currentUrl = currentTab.url.toLowerCase();
-
-            // Danh sách các từ khóa nhận dạng trang đăng nhập
-            const isLoginRoute =
-              currentUrl.includes("dang-nhap") ||
-              currentUrl.includes("login") ||
-              currentUrl.includes("auth");
-
-            // 🔥 Nếu đã vượt qua trang đăng nhập và tiến vào domain trường thành công
-            if (currentUrl.includes("sv.iuh.edu.vn") && !isLoginRoute) {
-              console.log(
-                `[IUH Background] ✅ Đăng nhập thành công tại: ${currentUrl}. Tiến hành xóa Ghost Tab...`,
-              );
-
-              // 1. Gỡ listener ngay lập tức tránh trùng lặp
-              chrome.tabs.onUpdated.removeListener(cookieCheckListener);
-
-              // 2. Chờ 1.5 giây để ghi Cookie ổn định
-              setTimeout(() => {
-                // 3. Đóng Ghost Tab dọn RAM
-                chrome.tabs.update(tabId, { pinned: false }, () => {
-                  chrome.tabs.remove(tabId, () => {
-                    // 4. Phản hồi trực tiếp về Portal.js để kích hoạt cào điểm
-                    sendResponse({ success: true });
-
-                    // 5. Tự động focus quay lại màn hình Dashboard của sinh viên
-                    if (dashboardTabId) {
-                      chrome.tabs.update(
-                        dashboardTabId,
-                        { active: true },
-                        () => {
-                          const err = chrome.runtime.lastError;
-                        },
-                      );
-                    }
-                  });
-                });
-              }, 1500);
-            }
-          });
+        const cleanupAll = () => {
+          chrome.runtime.onMessage.removeListener(authMsgListener);
+          chrome.tabs.onRemoved.removeListener(tabRemovedListener);
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
         };
-        chrome.tabs.onUpdated.addListener(cookieCheckListener);
+
+        const finishRenew = (ok, shouldCloseTab) => {
+          if (settled) return;
+          settled = true;
+          cleanupAll();
+
+          const finalize = () => {
+            try {
+              sendResponse({ success: ok });
+            } catch (_) {}
+            if (dashboardTabId) {
+              chrome.tabs.update(dashboardTabId, { active: true }, () => {
+                const err = chrome.runtime.lastError;
+              });
+            }
+          };
+
+          if (shouldCloseTab) {
+            setTimeout(() => {
+              chrome.tabs.update(tab.id, { pinned: false }, () => {
+                const ignoreErr = chrome.runtime.lastError;
+                chrome.tabs.remove(tab.id, () => {
+                  const ignoreRemoveErr = chrome.runtime.lastError;
+                  finalize();
+                });
+              });
+            }, 1200);
+          } else {
+            finalize();
+          }
+        };
+
+        // Xác nhận chắc chắn từ autologin.js rằng trang đã tải xong và KHÔNG còn form đăng nhập
+        const authMsgListener = (msg, msgSender) => {
+          if (
+            msg &&
+            msg.action === "iuhSessionVerifiedAuthenticated" &&
+            msgSender.tab &&
+            msgSender.tab.id === tab.id
+          ) {
+            console.log(
+              "[IUH Background] ✅ Đã xác thực Session thực tế thành công. Đóng Ghost Tab...",
+            );
+            finishRenew(true, true);
+          }
+        };
+
+        const tabRemovedListener = (removedTabId) => {
+          if (removedTabId === tab.id) {
+            finishRenew(false, false);
+          }
+        };
+
+        chrome.runtime.onMessage.addListener(authMsgListener);
+        chrome.tabs.onRemoved.addListener(tabRemovedListener);
+
+        // Timeout an toàn 45 giây nếu sai mật khẩu hoặc captcha lỗi liên tục
+        timeoutId = setTimeout(() => {
+          console.warn("[IUH Background] ⏱️ Hết thời gian chờ khôi phục Session (45s).");
+          finishRenew(false, true);
+        }, 45000);
       },
     );
 
