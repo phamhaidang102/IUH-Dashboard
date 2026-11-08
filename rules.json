@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        { "header": "Origin", "operation": "set", "value": "https://dkhp.iuh.edu.vn" },
+        { "header": "Referer", "operation": "set", "value": "https://dkhp.iuh.edu.vn/DangKyHocPhan" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||dkhp.iuh.edu.vn/",
+      "resourceTypes": ["xmlhttprequest"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        { "header": "Origin", "operation": "set", "value": "https://sv.iuh.edu.vn" },
+        { "header": "Referer", "operation": "set", "value": "https://sv.iuh.edu.vn/dashboard.html" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||sv.iuh.edu.vn/",
+      "resourceTypes": ["xmlhttprequest"]
+    }
+  }
+]

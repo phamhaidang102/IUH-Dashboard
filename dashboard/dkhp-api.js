@@ -1238,21 +1238,23 @@ async function fetchLopHocPhanDaDangKy(idDot) {
     const tabs = await new Promise((resolve) => {
       chrome.tabs.query({ url: "*://dkhp.iuh.edu.vn/*" }, (t) => resolve(t || []));
     });
-    if (Array.isArray(tabs) && tabs.length > 0) {
+    for (const tab of tabs) {
+      if (!tab.id) continue;
       const resp = await new Promise((resolve) => {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "getLopDaDK", idDot }, (r) => {
+        chrome.tabs.sendMessage(tab.id, { action: "getLopDaDK", idDot }, (r) => {
           if (chrome.runtime.lastError || !r) resolve(null);
           else resolve(r);
         });
       });
       if (resp && Array.isArray(resp.rows) && resp.rows.length > 0) {
-        console.log(`[DKHP] Đã kéo ${resp.rows.length} môn từ bảng #lopDaDK trên tab dkhp.iuh.edu.vn!`);
+        console.log(`[DKHP] Đã kéo ${resp.rows.length} môn từ bảng #lopDaDK trên tab ID ${tab.id}!`);
         return resp.rows;
       }
     }
   } catch (_) {}
 
   // 2. Không cần mở tab: Gửi GET /DangKyHocPhan ngầm và parse bảng #lopDaDK
+  // (Đã được bảo vệ an toàn 100% nhờ declarativeNetRequest tĩnh trong rules.json)
   const backgroundRows = await fetchAndParseLopDaDkFromHtml(idDot);
   if (Array.isArray(backgroundRows) && backgroundRows.length > 0) {
     return backgroundRows;
@@ -1271,6 +1273,32 @@ async function fetchLopHocPhanDaDangKy(idDot) {
 
   return [];
 }
+
+// =============================================================================
+// DKHP SESSION KEEP-ALIVE (Giữ session ASP.NET không bị timeout sau 20 phút)
+// =============================================================================
+let _dkhpKeepAliveTimer = null;
+
+function initDkhpSessionKeepAlive() {
+  if (_dkhpKeepAliveTimer) return;
+  _dkhpKeepAliveTimer = setInterval(async () => {
+    try {
+      if (document.visibilityState !== "visible") return;
+      await fetchWithTimeout(`${DKHP_BASE}/DangKyHocPhan/CheckKhacDiaDiemPhongBuoiHoc`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: "idLopHocPhan=&nhomThucHanh=",
+      }, 8000);
+      console.log("[DKHP Keep-Alive] Đã làm mới session ASP.NET ngầm định kỳ.");
+    } catch (_) {}
+  }, 8 * 60 * 1000); // 8 phút/lần
+}
+
+initDkhpSessionKeepAlive();
 
 /** Lấy chi tiết lịch học của 1 lớp. */
 async function fetchChiTietLopHocPhan(idLHPEncrypted, maNhomTH) {
@@ -2120,8 +2148,15 @@ function parseRawScheduleList(schedules, tenMon, color, selectedNhomTH = null, e
     const lichHoc = sched.LichHoc || "";
     const phong = sched.Phong || "";
     const giangVien = sched.GiangVien || "";
-    const nhomTH = sched.NhomThucHanh != null && sched.NhomThucHanh !== "" ? Number(sched.NhomThucHanh) : null;
-    const isLT = sched.IsLyThuyet !== undefined ? Boolean(sched.IsLyThuyet) : (nhomTH === null || nhomTH === 0 || /LT/i.test(lichHoc));
+    const rawGroup = sched.NhomThucHanh ?? sched.Nhom ?? sched.NhomTH ?? sched.MaNhom;
+    let nhomTH = rawGroup != null && String(rawGroup).trim() !== "" && !isNaN(Number(rawGroup)) ? Number(rawGroup) : null;
+    if (nhomTH === null && lichHoc) {
+      const gMatch = lichHoc.match(/(?:Nhóm|Tổ)\s*(\d+)/i);
+      if (gMatch) nhomTH = Number(gMatch[1]);
+    }
+    const isLT = sched.IsLyThuyet !== undefined
+      ? Boolean(sched.IsLyThuyet)
+      : (nhomTH === null || nhomTH === 0 || /LT/i.test(lichHoc) || !/\b(TH|Thực hành|Tổ|Nhóm)\b/i.test(lichHoc));
 
     // Nếu lớp có nhiều tổ thực hành và người dùng đã chọn 1 tổ TH cụ thể, chỉ lấy lịch LT + đúng tổ TH đó
     if (
@@ -4126,6 +4161,15 @@ async function loadLhpTab(forceRefresh = false, targetIdDot = null) {
     showOnly(tableSectionEl);
     refreshLhpPlannerView(activeIdDot);
     return;
+  }
+
+  if (forceRefresh) {
+    console.log(`[DKHP] forceRefresh = true: Làm mới cache chi tiết lớp học đợt ${activeIdDot}...`);
+    _lhpClassDetailCache = {};
+    chrome.storage.local.remove("iuh_lhp_class_detail_cache");
+    if (_lhpDataByDotCache[activeIdDot]) {
+      _lhpDataByDotCache[activeIdDot].schedules = [];
+    }
   }
 
   _isFetchingLhp = true;

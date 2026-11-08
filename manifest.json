@@ -7,12 +7,21 @@
     "storage",
     "alarms",
     "tabs",
-    "declarativeNetRequestWithHostAccess"
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "*://sv.iuh.edu.vn/*",
     "*://dkhp.iuh.edu.vn/*"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "background": {
     "service_worker": "background.js"
   },
