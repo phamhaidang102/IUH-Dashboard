@@ -1284,6 +1284,238 @@
     return rows;
   }
 
+  function parseAgentRawScheduleList(schedules, tenMon, color, selectedNhomTH = null, extraMeta = {}) {
+    if (!Array.isArray(schedules)) return [];
+    const result = [];
+    const seenSlotKeys = new Set();
+
+    schedules.forEach((sched) => {
+      const lichHoc = sched.LichHoc || "";
+      const phong = sched.Phong || "";
+      const giangVien = sched.GiangVien || "";
+      const rawGroup = sched.NhomThucHanh ?? sched.Nhom ?? sched.NhomTH ?? sched.MaNhom;
+      let nhomTH = rawGroup != null && String(rawGroup).trim() !== "" && !isNaN(Number(rawGroup)) ? Number(rawGroup) : null;
+      if (nhomTH === null && lichHoc) {
+        const gMatch = lichHoc.match(/(?:Nhóm|Tổ)\s*(\d+)/i);
+        if (gMatch) nhomTH = Number(gMatch[1]);
+      }
+      const isLT = sched.IsLyThuyet !== undefined
+        ? Boolean(sched.IsLyThuyet)
+        : (nhomTH === null || nhomTH === 0 || /LT/i.test(lichHoc) || !/\b(TH|Thực hành|Tổ|Nhóm)\b/i.test(lichHoc));
+
+      if (
+        !isLT &&
+        selectedNhomTH != null &&
+        Number(selectedNhomTH) > 0 &&
+        nhomTH != null &&
+        nhomTH > 0 &&
+        nhomTH !== Number(selectedNhomTH)
+      ) {
+        return;
+      }
+
+      if (!lichHoc) return;
+
+      const match = lichHoc.match(/(?:Thứ\s*(\d+)|(CN|Chủ\s*nhật))\s*\(\s*(?:Tiết\s*|T)?(\d+)\s*[-–—]+>?\s*(?:Tiết\s*|T)?(\d+)\s*\)/i);
+      if (match) {
+        let col = 2;
+        if (match[1]) {
+          col = parseInt(match[1], 10);
+        } else if (match[2]) {
+          col = 8;
+        }
+        const start = parseInt(match[3], 10);
+        const end = parseInt(match[4], 10);
+
+        let startDate = null;
+        let endDate = null;
+        const timeStr = String(sched.ThoiGian || sched.TuNgayDenNgay || "");
+        const tuStr = String(sched.TuNgay || "");
+        const denStr = String(sched.DenNgay || "");
+        const dMatches = (timeStr + " " + tuStr + " " + denStr).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/g);
+        if (dMatches && dMatches.length >= 2) {
+          const p1 = dMatches[0].split("/");
+          const p2 = dMatches[dMatches.length - 1].split("/");
+          startDate = Date.UTC(parseInt(p1[2], 10), parseInt(p1[1], 10) - 1, parseInt(p1[0], 10));
+          endDate = Date.UTC(parseInt(p2[2], 10), parseInt(p2[1], 10) - 1, parseInt(p2[0], 10));
+        }
+
+        const dedupKey = `${col}_${start}_${end}_${isLT ? "LT" : "TH"}_${nhomTH || 0}`;
+        if (seenSlotKeys.has(dedupKey)) return;
+        seenSlotKeys.add(dedupKey);
+
+        result.push({
+          col,
+          start,
+          end,
+          startDate,
+          endDate,
+          tenMon,
+          phong,
+          giangVien,
+          color,
+          isLT,
+          nhomTH,
+          ...extraMeta,
+        });
+      }
+    });
+
+    return result;
+  }
+
+  async function agentSyncFullLhp(idDot, forceRefresh = false) {
+    let rows = scrapeLopDaDK();
+
+    // Nếu không có bảng #lopDaDK trên DOM (đang ở ThongTinPortal / Hồ sơ sinh viên):
+    // Gửi GET /DangKyHocPhan trong context tab (first-party, cookies đính kèm tự nhiên)
+    if (!rows || rows.length === 0) {
+      try {
+        const res = await fetch("/DangKyHocPhan", {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+        });
+        if (res.ok) {
+          const html = await res.text();
+          if (html.includes("lopDaDK")) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            const table = doc.getElementById("lopDaDK");
+            if (table) {
+              const trs = table.querySelectorAll("tbody tr");
+              const bgRows = [];
+              trs.forEach((tr) => {
+                const tds = tr.querySelectorAll("td");
+                if (tds.length < 3) return;
+                const xemMatch = tr.innerHTML.match(/XemLichHoc\s*\(\s*['"]([^'"]+)['"]\s*,\s*(\d+)\s*\)/i);
+                const idEncrypted = xemMatch ? xemMatch[1] : "";
+                const nhomFromXem = xemMatch ? parseInt(xemMatch[2], 10) : 0;
+                let maLHP = tds[2] ? tds[2].textContent.trim() : "";
+                let tenMon = tds[3] ? tds[3].textContent.trim() : "";
+                let lopDuKien = tds[4] ? tds[4].textContent.trim() : "";
+                let soTC = tds[5] ? parseInt(tds[5].textContent.trim(), 10) || 0 : 0;
+                let maNhomTH = tds[6] && tds[6].textContent.trim() ? parseInt(tds[6].textContent.trim(), 10) || 0 : nhomFromXem;
+                let hocPhi = tds[7] ? parseInt(tds[7].textContent.replace(/[,.]/g, "").trim(), 10) || 0 : 0;
+                let trangThaiDK = tds[10] ? tds[10].textContent.trim() : "";
+                let ngayDK = tds[11] ? tds[11].textContent.trim() : "";
+                let trangThaiLHP = tds[12] ? tds[12].textContent.trim() : "Đã đăng ký";
+
+                if (maLHP || tenMon) {
+                  bgRows.push({
+                    IdLopHocPhanString: idEncrypted,
+                    IDLopHocPhanEncrypted: idEncrypted,
+                    MaLopHocPhan: maLHP,
+                    MaLHP: maLHP,
+                    TenMonHoc: tenMon,
+                    LopDuKien: lopDuKien,
+                    SoTinChi: soTC || 3,
+                    MaNhomThucHanh: maNhomTH,
+                    HocPhi: hocPhi,
+                    TrangThaiDK: trangThaiDK,
+                    NgayDangKy: ngayDK,
+                    TrangThaiLopHocPhan: trangThaiLHP || "Đã đăng ký",
+                  });
+                }
+              });
+              if (bgRows.length > 0) rows = bgRows;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[DKHP Agent] Lỗi fetch /DangKyHocPhan ngầm từ tab:", err);
+      }
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { rows: [], schedules: [], fetchedAt: Date.now() };
+    }
+
+    const storageData = await new Promise((r) =>
+      chrome.storage.local.get(["iuh_lhp_class_detail_cache", "iuh_lhp_data_by_dot"], r)
+    );
+    let classDetailCache = forceRefresh ? {} : (storageData?.iuh_lhp_class_detail_cache || {});
+
+    const LHP_COLORS = [
+      "#3B82F6", "#EF4444", "#10B981", "#F59E0B", "#8B5CF6",
+      "#EC4899", "#06B6D4", "#F97316", "#14B8A6", "#6366F1"
+    ];
+    const allSchedules = [];
+
+    // Tải chi tiết lịch học từng lớp trong ngữ cảnh tab (FIRST-PARTY, cookies tự động đính kèm)
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const idEncrypted = row.IdLopHocPhanString || row.IDLopHocPhanEncrypted || "";
+      const maNhomTH = row.MaNhomThucHanh != null ? Number(row.MaNhomThucHanh) : 0;
+      const tenMon = row.TenMonHoc || "(Không tên)";
+      const maLHP = row.MaLopHocPhan || row.MaLHP || "";
+
+      let rawSchedList = classDetailCache[idEncrypted];
+      if (!rawSchedList && idEncrypted) {
+        await new Promise((r) => setTimeout(r, 150));
+        try {
+          const detailRes = await fetch("/DangKyHocPhan/GetChiTietLopHocPhan", {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            body: `idLopHocPhan=${encodeURIComponent(idEncrypted)}&maNhomTH=${encodeURIComponent(maNhomTH)}`,
+          });
+          if (detailRes.ok) {
+            const detailText = await detailRes.text();
+            if (!detailText.includes("<!DOCTYPE") && !detailText.includes("frmLogin")) {
+              const parsed = JSON.parse(detailText);
+              rawSchedList = parsed?.ListLichHoc || (Array.isArray(parsed) ? parsed : []);
+              classDetailCache[idEncrypted] = rawSchedList;
+            }
+          }
+        } catch (e) {
+          console.warn("[DKHP Agent] Lỗi tải chi tiết lớp:", tenMon, e);
+        }
+      }
+
+      if (Array.isArray(rawSchedList) && rawSchedList.length > 0) {
+        const parsed = parseAgentRawScheduleList(
+          rawSchedList,
+          tenMon,
+          LHP_COLORS[i % LHP_COLORS.length],
+          maNhomTH,
+          {
+            statusType: "registered",
+            maLHP,
+            maMonHoc: maLHP.length >= 10 ? maLHP.substring(0, 10) : maLHP,
+          }
+        );
+        allSchedules.push(...parsed);
+      }
+    }
+
+    const dotKey = String(idDot || _agentSelectedDot || "65");
+    const cachedByDot = storageData?.iuh_lhp_data_by_dot || {};
+    cachedByDot[dotKey] = {
+      idDot: dotKey,
+      rows,
+      schedules: allSchedules,
+      fetchedAt: Date.now(),
+    };
+
+    chrome.storage.local.set({
+      iuh_lhp_data_by_dot: cachedByDot,
+      iuh_lhp_data: rows,
+      iuh_lhp_class_detail_cache: classDetailCache,
+    });
+
+    return {
+      rows,
+      schedules: allSchedules,
+      fetchedAt: Date.now(),
+    };
+  }
+
   async function initDkhpAgent() {
     // Trích xuất thụ động _iDSV từ inline script trên trang /DangKyHocPhan (nếu có) để lưu vào storage
     try {
@@ -1309,11 +1541,39 @@
       obs.observe(lopDaDkEl, { childList: true, subtree: true });
     }
 
+    // Giữ session ASP.NET không bị timeout sau 20 phút (chạy trong context tab đầu chủ, an toàn 100%)
+    setInterval(async () => {
+      try {
+        if (document.visibilityState !== "visible") return;
+        await fetch("/DangKyHocPhan/CheckKhacDiaDiemPhongBuoiHoc", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: "idLopHocPhan=&nhomThucHanh=",
+        });
+        console.log("[DKHP Agent Keep-Alive] Đã làm mới session ngầm thành công.");
+      } catch (_) {}
+    }, 8 * 60 * 1000);
+
     // Lắng nghe yêu cầu lấy dữ liệu từ Dashboard
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.action === "getLopDaDK") {
         const rows = scrapeLopDaDK();
         sendResponse({ ok: true, rows });
+        return true;
+      }
+      if (request.action === "syncFullLhp") {
+        (async () => {
+          try {
+            const bundled = await agentSyncFullLhp(request.idDot, request.forceRefresh);
+            sendResponse({ ok: true, data: bundled });
+          } catch (err) {
+            sendResponse({ ok: false, error: String(err) });
+          }
+        })();
         return true;
       }
     });

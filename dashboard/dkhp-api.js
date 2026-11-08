@@ -1274,31 +1274,6 @@ async function fetchLopHocPhanDaDangKy(idDot) {
   return [];
 }
 
-// =============================================================================
-// DKHP SESSION KEEP-ALIVE (Giữ session ASP.NET không bị timeout sau 20 phút)
-// =============================================================================
-let _dkhpKeepAliveTimer = null;
-
-function initDkhpSessionKeepAlive() {
-  if (_dkhpKeepAliveTimer) return;
-  _dkhpKeepAliveTimer = setInterval(async () => {
-    try {
-      if (document.visibilityState !== "visible") return;
-      await fetchWithTimeout(`${DKHP_BASE}/DangKyHocPhan/CheckKhacDiaDiemPhongBuoiHoc`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-        body: "idLopHocPhan=&nhomThucHanh=",
-      }, 8000);
-      console.log("[DKHP Keep-Alive] Đã làm mới session ASP.NET ngầm định kỳ.");
-    } catch (_) {}
-  }, 8 * 60 * 1000); // 8 phút/lần
-}
-
-initDkhpSessionKeepAlive();
 
 /** Lấy chi tiết lịch học của 1 lớp. */
 async function fetchChiTietLopHocPhan(idLHPEncrypted, maNhomTH) {
@@ -2070,73 +2045,53 @@ function sanitizeSchedulesAgainstRows(schedules, rows) {
 }
 
 /**
- * Tải tuần tự toàn bộ dữ liệu LHP đã đăng ký + Chi tiết lịch học cho 1 đợt đăng ký (idDot).
- * Có khoảng nghỉ 180ms giữa các request để tránh ASP.NET Session Lock / Force Logout.
+ * Tải toàn bộ dữ liệu LHP đã đăng ký + Chi tiết lịch học cho 1 đợt đăng ký (idDot).
+ * ĐỒNG BỘ 100% QUA TAB DKHP ĐANG MỞ (Content Script Proxy).
+ * Tuyệt đối không gửi request fetch ngầm từ Dashboard tránh bị Chrome strip cookie và server reset session.
  */
-async function fetchFullLhpDataForDot(idDot, onProgress) {
-  const rawData = await fetchLopHocPhanDaDangKy(idDot);
-  if (rawData === null) return null;
-
-  const rows = Array.isArray(rawData)
-    ? rawData
-    : rawData.data || rawData.Data || [];
-  const allSchedules = [];
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const idEncrypted =
-      row.IdLopHocPhanString || row.IDLopHocPhanEncrypted || "";
-    const maNhomTH = row.MaNhomThucHanh != null ? Number(row.MaNhomThucHanh) : 0;
-    const tenMon = row.TenMonHoc || "(Không tên)";
-    const maLHP = row.MaLopHocPhan || row.MaLHP || "";
-
-    if (typeof onProgress === "function") {
-      onProgress(i + 1, rows.length, tenMon);
-    }
-
-    let schedules = null;
-    // 1. Thử lấy từ cache chi tiết đã lưu trong storage
-    if (idEncrypted && _lhpClassDetailCache[idEncrypted]) {
-      schedules = _lhpClassDetailCache[idEncrypted];
-    }
-
-    // 2. Tải trực tiếp từ máy chủ nếu chưa có trong cache
-    if (!schedules && idEncrypted) {
-      await new Promise((r) => setTimeout(r, 180));
-      try {
-        const detailData = await fetchChiTietLopHocPhan(idEncrypted, maNhomTH);
-        if (detailData) {
-          schedules = detailData.ListLichHoc || (Array.isArray(detailData) ? detailData : []);
-          _lhpClassDetailCache[idEncrypted] = schedules;
-          saveLhpPlannerState();
-        }
-      } catch (e) {
-        console.warn("[DKHP] Lỗi lấy lịch học môn:", tenMon, e);
+async function fetchFullLhpDataForDot(idDot, onProgress, forceRefresh = false) {
+  // 1. Đồng bộ an toàn 100% qua Content Script của tab DKHP đang mở
+  try {
+    const tabs = await new Promise((resolve) => {
+      chrome.tabs.query({ url: "*://dkhp.iuh.edu.vn/*" }, (t) => resolve(t || []));
+    });
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      if (typeof onProgress === "function") {
+        onProgress(1, 1, "Đang đồng bộ trực tiếp từ tab DKHP...");
+      }
+      const resp = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tab.id, { action: "syncFullLhp", idDot, forceRefresh }, (r) => {
+          if (chrome.runtime.lastError || !r) resolve(null);
+          else resolve(r);
+        });
+      });
+      if (resp && resp.ok && resp.data && Array.isArray(resp.data.rows) && resp.data.rows.length > 0) {
+        console.log(`[DKHP] Đồng bộ LHP thành công từ tab DKHP (ID ${tab.id}): ${resp.data.rows.length} môn, ${resp.data.schedules.length} lịch.`);
+        return resp.data;
       }
     }
-
-
-    if (Array.isArray(schedules) && schedules.length > 0) {
-      const parsedSchedules = parseRawScheduleList(
-        schedules,
-        tenMon,
-        LHP_COLORS[i % LHP_COLORS.length],
-        maNhomTH,
-        {
-          statusType: "registered",
-          maLHP,
-          maMonHoc: maLHP.length >= 10 ? maLHP.substring(0, 10) : maLHP,
-        }
-      );
-      allSchedules.push(...parsedSchedules);
-    }
+  } catch (err) {
+    console.warn("[DKHP] Lỗi giao tiếp với tab DKHP:", err);
   }
 
-  return {
-    rows,
-    schedules: allSchedules,
-    fetchedAt: Date.now(),
-  };
+  // 2. Không có tab DKHP nào phản hồi: LẤY TỪ STORAGE AN TOÀN (Tuyệt đối KHÔNG gửi fetch ngầm cross-site gây mất session)
+  console.log("[DKHP] Không tìm thấy tab DKHP mở sẵn. Tải dữ liệu từ bộ nhớ đệm an toàn...");
+  const stored = await new Promise((resolve) =>
+    chrome.storage.local.get(["iuh_lhp_data_by_dot", "iuh_lhp_data"], resolve)
+  );
+  if (stored.iuh_lhp_data_by_dot?.[idDot]?.rows?.length > 0) {
+    return stored.iuh_lhp_data_by_dot[idDot];
+  }
+  if (stored.iuh_lhp_data?.length > 0) {
+    return {
+      rows: stored.iuh_lhp_data,
+      schedules: [],
+      fetchedAt: Date.now(),
+    };
+  }
+
+  return null;
 }
 
 function parseRawScheduleList(schedules, tenMon, color, selectedNhomTH = null, extraMeta = {}) {
@@ -4189,7 +4144,8 @@ async function loadLhpTab(forceRefresh = false, targetIdDot = null) {
         if (loadingTextEl) {
           loadingTextEl.textContent = `⏳ Đang tải lịch học (${idx}/${total}): ${tenMon}...`;
         }
-      }
+      },
+      forceRefresh
     );
 
     if (bundledData === null) {
