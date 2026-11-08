@@ -1015,7 +1015,7 @@ async function loadCtkTab(forceRefresh = false) {
 
     if (data === null) {
       if (_ctkCache) {
-        alert("Lỗi xác thực: Vui lòng đăng nhập trang DKHP để tải dữ liệu mới nhất.");
+        console.warn("[DKHP] Lỗi xác thực hoặc hết phiên DKHP. Đang hiển thị dữ liệu CTK đã lưu.");
         showOnly(tableSectionEl);
       } else {
         showOnly(authGateEl);
@@ -1169,30 +1169,46 @@ async function fetchAndParseLopDaDkFromHtml(idDot) {
       const tds = tr.querySelectorAll("td");
       if (tds.length < 3) return;
 
-      let maLHP = "";
-      let tenMon = "";
-      let lopDuKien = "";
-      let soTC = 0;
-      let maNhomTH = 0;
-      let hocPhi = 0;
+      // Trích xuất mã ID mã hóa và tổ thực hành từ hàm XemLichHoc('...', nhomTH)
+      const xemMatch = tr.innerHTML.match(/XemLichHoc\s*\(\s*['"]([^'"]+)['"]\s*,\s*(\d+)\s*\)/i);
+      const idEncrypted = xemMatch ? xemMatch[1] : "";
+      const nhomFromXem = xemMatch ? parseInt(xemMatch[2], 10) : 0;
 
-      tds.forEach((td, idx) => {
-        const txt = td.textContent.trim();
-        const m12 = txt.match(/\b\d{10,12}\b/);
-        if (m12 && !maLHP) maLHP = m12[0];
-        if (!tenMon && idx >= 1 && idx <= 3 && txt.length > 4 && !/^\d+$/.test(txt)) tenMon = txt;
-        if (/^\d{1,2}$/.test(txt) && Number(txt) > 0 && Number(txt) <= 12 && soTC === 0 && idx >= 2 && idx <= 5) soTC = Number(txt);
-        if (txt.toLowerCase().includes("nhóm") || txt.toLowerCase().includes("tổ")) {
-          const tm = txt.match(/\d+/);
-          if (tm) maNhomTH = Number(tm[0]);
-        }
-        const feeMatch = txt.replace(/[,.]/g, "").match(/\b\d{6,8}\b/);
-        if (feeMatch && hocPhi === 0) hocPhi = Number(feeMatch[0]);
-        if (txt.match(/^[A-Z0-9]{5,15}$/) && !maLHP.includes(txt) && !lopDuKien && idx >= 2) lopDuKien = txt;
-      });
+      // Cột chuẩn IUH DKHP:
+      // Col 0: Thao tác (XemLichHoc), Col 1: STT, Col 2: Mã LHP, Col 3: Tên môn học
+      // Col 4: Lớp DK, Col 5: Số TC, Col 6: Nhóm TH, Col 7: Học phí, Col 10: Trạng thái ĐK, Col 11: Ngày ĐK, Col 12: Trạng thái LHP
+      let maLHP = tds[2] ? tds[2].textContent.trim() : "";
+      let tenMon = tds[3] ? tds[3].textContent.trim() : "";
+      let lopDuKien = tds[4] ? tds[4].textContent.trim() : "";
+      let soTC = tds[5] ? parseInt(tds[5].textContent.trim(), 10) || 0 : 0;
+      let maNhomTH = tds[6] && tds[6].textContent.trim() ? parseInt(tds[6].textContent.trim(), 10) || 0 : nhomFromXem;
+      let hocPhi = tds[7] ? parseInt(tds[7].textContent.replace(/[,.]/g, "").trim(), 10) || 0 : 0;
+      let trangThaiDK = tds[10] ? tds[10].textContent.trim() : "";
+      let ngayDK = tds[11] ? tds[11].textContent.trim() : "";
+      let trangThaiLHP = tds[12] ? tds[12].textContent.trim() : "Đã đăng ký";
+
+      // Fallback quét tự do nếu cấu trúc bảng bị xê dịch
+      if (!maLHP || !tenMon) {
+        tds.forEach((td, idx) => {
+          const txt = td.textContent.trim();
+          const m12 = txt.match(/\b\d{10,12}\b/);
+          if (m12 && !maLHP) maLHP = m12[0];
+          if (!tenMon && idx >= 1 && idx <= 3 && txt.length > 4 && !/^\d+$/.test(txt)) tenMon = txt;
+          if (/^\d{1,2}$/.test(txt) && Number(txt) > 0 && Number(txt) <= 12 && soTC === 0 && idx >= 2 && idx <= 5) soTC = Number(txt);
+          if (txt.toLowerCase().includes("nhóm") || txt.toLowerCase().includes("tổ")) {
+            const tm = txt.match(/\d+/);
+            if (tm && !maNhomTH) maNhomTH = Number(tm[0]);
+          }
+          const feeMatch = txt.replace(/[,.]/g, "").match(/\b\d{6,8}\b/);
+          if (feeMatch && hocPhi === 0) hocPhi = Number(feeMatch[0]);
+          if (txt.match(/^[A-Z0-9]{5,15}$/) && !maLHP.includes(txt) && !lopDuKien && idx >= 2) lopDuKien = txt;
+        });
+      }
 
       if (maLHP || tenMon) {
         rows.push({
+          IdLopHocPhanString: idEncrypted,
+          IDLopHocPhanEncrypted: idEncrypted,
           MaLopHocPhan: maLHP,
           MaLHP: maLHP,
           TenMonHoc: tenMon,
@@ -1200,7 +1216,9 @@ async function fetchAndParseLopDaDkFromHtml(idDot) {
           SoTinChi: soTC || 3,
           MaNhomThucHanh: maNhomTH,
           HocPhi: hocPhi,
-          TrangThaiLopHocPhan: "Đã đăng ký",
+          TrangThaiDK: trangThaiDK,
+          NgayDangKy: ngayDK,
+          TrangThaiLopHocPhan: trangThaiLHP || "Đã đăng ký",
         });
       }
     });
@@ -1997,6 +2015,33 @@ function checkScheduleConflicts(candidateBlocks, existingBlocks, ignoreCourseCod
 // =============================================================================
 
 /**
+ * Lọc sạch các tiết lịch học không đúng với nhóm thực hành đã đăng ký (hoặc bị sót/trùng từ trước).
+ */
+function sanitizeSchedulesAgainstRows(schedules, rows) {
+  if (!Array.isArray(schedules) || !Array.isArray(rows)) return schedules || [];
+  const rowMap = new Map();
+  rows.forEach((r) => {
+    const lhp = String(r.MaLopHocPhan || r.MaLHP || "").trim();
+    const ten = removeVietnameseTones(String(r.TenMonHoc || "").trim().toLowerCase());
+    const nhomTH = r.MaNhomThucHanh != null ? Number(r.MaNhomThucHanh) : 0;
+    if (lhp) rowMap.set(lhp, { nhomTH, ten });
+    if (ten) rowMap.set(ten, { nhomTH, ten });
+  });
+
+  return schedules.filter((s) => {
+    const lhp = String(s.maLHP || "").trim();
+    const ten = removeVietnameseTones(String(s.tenMon || "").trim().toLowerCase());
+    const info = rowMap.get(lhp) || rowMap.get(ten);
+    if (!info) return true;
+    // Nếu là tiết thực hành mà sinh viên đã có Tổ TH cụ thể (> 0), chỉ giữ đúng tổ đó
+    if (!s.isLT && info.nhomTH > 0 && s.nhomTH != null && Number(s.nhomTH) > 0) {
+      return Number(s.nhomTH) === info.nhomTH;
+    }
+    return true;
+  });
+}
+
+/**
  * Tải tuần tự toàn bộ dữ liệu LHP đã đăng ký + Chi tiết lịch học cho 1 đợt đăng ký (idDot).
  * Có khoảng nghỉ 180ms giữa các request để tránh ASP.NET Session Lock / Force Logout.
  */
@@ -2013,9 +2058,7 @@ async function fetchFullLhpDataForDot(idDot, onProgress) {
     const row = rows[i];
     const idEncrypted =
       row.IdLopHocPhanString || row.IDLopHocPhanEncrypted || "";
-    if (!idEncrypted) continue;
-
-    const maNhomTH = row.MaNhomThucHanh != null ? row.MaNhomThucHanh : 0;
+    const maNhomTH = row.MaNhomThucHanh != null ? Number(row.MaNhomThucHanh) : 0;
     const tenMon = row.TenMonHoc || "(Không tên)";
     const maLHP = row.MaLopHocPhan || row.MaLHP || "";
 
@@ -2023,16 +2066,29 @@ async function fetchFullLhpDataForDot(idDot, onProgress) {
       onProgress(i + 1, rows.length, tenMon);
     }
 
-    // Nghỉ 180ms trước mỗi request chi tiết để ASP.NET nhả khóa Session an toàn
-    await new Promise((r) => setTimeout(r, 180));
+    let schedules = null;
+    // 1. Thử lấy từ cache chi tiết đã lưu trong storage
+    if (idEncrypted && _lhpClassDetailCache[idEncrypted]) {
+      schedules = _lhpClassDetailCache[idEncrypted];
+    }
 
-    try {
-      const detailData = await fetchChiTietLopHocPhan(idEncrypted, maNhomTH);
-      if (!detailData) continue;
+    // 2. Tải trực tiếp từ máy chủ nếu chưa có trong cache
+    if (!schedules && idEncrypted) {
+      await new Promise((r) => setTimeout(r, 180));
+      try {
+        const detailData = await fetchChiTietLopHocPhan(idEncrypted, maNhomTH);
+        if (detailData) {
+          schedules = detailData.ListLichHoc || (Array.isArray(detailData) ? detailData : []);
+          _lhpClassDetailCache[idEncrypted] = schedules;
+          saveLhpPlannerState();
+        }
+      } catch (e) {
+        console.warn("[DKHP] Lỗi lấy lịch học môn:", tenMon, e);
+      }
+    }
 
-      const schedules =
-        detailData.ListLichHoc || (Array.isArray(detailData) ? detailData : []);
 
+    if (Array.isArray(schedules) && schedules.length > 0) {
       const parsedSchedules = parseRawScheduleList(
         schedules,
         tenMon,
@@ -2044,10 +2100,7 @@ async function fetchFullLhpDataForDot(idDot, onProgress) {
           maMonHoc: maLHP.length >= 10 ? maLHP.substring(0, 10) : maLHP,
         }
       );
-
       allSchedules.push(...parsedSchedules);
-    } catch (e) {
-      console.warn("[DKHP] Lỗi lấy lịch học môn:", tenMon, e);
     }
   }
 
@@ -2067,8 +2120,8 @@ function parseRawScheduleList(schedules, tenMon, color, selectedNhomTH = null, e
     const lichHoc = sched.LichHoc || "";
     const phong = sched.Phong || "";
     const giangVien = sched.GiangVien || "";
-    const nhomTH = sched.NhomThucHanh != null ? Number(sched.NhomThucHanh) : null;
-    const isLT = sched.IsLyThuyet !== undefined ? Boolean(sched.IsLyThuyet) : nhomTH === null || nhomTH === 0;
+    const nhomTH = sched.NhomThucHanh != null && sched.NhomThucHanh !== "" ? Number(sched.NhomThucHanh) : null;
+    const isLT = sched.IsLyThuyet !== undefined ? Boolean(sched.IsLyThuyet) : (nhomTH === null || nhomTH === 0 || /LT/i.test(lichHoc));
 
     // Nếu lớp có nhiều tổ thực hành và người dùng đã chọn 1 tổ TH cụ thể, chỉ lấy lịch LT + đúng tổ TH đó
     if (
@@ -2142,6 +2195,9 @@ function parseRawScheduleList(schedules, tenMon, color, selectedNhomTH = null, e
 function refreshLhpPlannerView(targetIdDot = null) {
   const activeIdDot = targetIdDot ? String(targetIdDot) : getActiveLhpDot();
   const bundled = _lhpDataByDotCache[activeIdDot] || { rows: [], schedules: [] };
+  if (Array.isArray(bundled.rows) && Array.isArray(bundled.schedules)) {
+    bundled.schedules = sanitizeSchedulesAgainstRows(bundled.schedules, bundled.rows);
+  }
   renderLopHocPhanDaDangKy(bundled, activeIdDot);
   renderLhpLeftCourseList(activeIdDot);
 }
@@ -2314,11 +2370,39 @@ function renderLopHocPhanDaDangKy(data, explicitDot = null) {
     !Array.isArray(data) &&
     Array.isArray(data.rows);
   const regRows = isBundled
-    ? data.rows
+    ? (Array.isArray(data.rows) ? data.rows : [])
     : Array.isArray(data)
     ? data
     : data?.data || data?.Data || [];
-  const regSchedules = isBundled && Array.isArray(data.schedules) ? data.schedules : [];
+  const rawRegSchedules = isBundled && Array.isArray(data.schedules) ? data.schedules : [];
+  let regSchedules = sanitizeSchedulesAgainstRows(rawRegSchedules, regRows);
+
+  // Tự động khôi phục lịch học nếu danh sách regRows có môn mà regSchedules chưa có
+  regRows.forEach((r, idx) => {
+    const lhp = String(r.MaLopHocPhan || r.MaLHP || "").trim();
+    const ten = r.TenMonHoc || "";
+    const idEnc = r.IdLopHocPhanString || r.IDLopHocPhanEncrypted || "";
+    const hasSched = regSchedules.some(
+      (s) => (s.maLHP && s.maLHP === lhp) || (s.tenMon && s.tenMon === ten)
+    );
+    if (!hasSched && idEnc) {
+      const seedDetail = _lhpClassDetailCache[idEnc] || [];
+      if (seedDetail.length > 0) {
+        const parsed = parseRawScheduleList(
+          seedDetail,
+          ten,
+          LHP_COLORS[idx % LHP_COLORS.length],
+          r.MaNhomThucHanh,
+          {
+            statusType: "registered",
+            maLHP: lhp,
+            maMonHoc: lhp.length >= 10 ? lhp.substring(0, 10) : lhp,
+          }
+        );
+        regSchedules.push(...parsed);
+      }
+    }
+  });
 
   const plannedList = _lhpPlannedByDot[activeIdDot] || [];
   if (pinnedTabCountEl) pinnedTabCountEl.textContent = String(plannedList.length);
@@ -2330,11 +2414,14 @@ function renderLopHocPhanDaDangKy(data, explicitDot = null) {
   renderLhpTuitionCard(activeIdDot, regRows, plannedList, ratesInfo);
 
   const regKeys = new Set();
+  const regNames = new Set();
   regRows.forEach((r) => {
     const lhp = String(r.MaLopHocPhan || r.MaLHP || "").trim();
     const mh = String(r.MaMonHoc || "").trim();
+    const ten = removeVietnameseTones(String(r.TenMonHoc || "").toLowerCase().trim());
     if (lhp) regKeys.add(lhp);
     if (mh) regKeys.add(mh);
+    if (ten) regNames.add(ten);
     if (lhp.length >= 10) regKeys.add(lhp.substring(0, 10));
     if (lhp.length >= 10) regKeys.add(lhp.substring(4, 10));
   });
@@ -2343,7 +2430,13 @@ function renderLopHocPhanDaDangKy(data, explicitDot = null) {
     const lhp = String(item.maLHP || "").trim();
     const hp = String(item.maHocPhan || "").trim();
     const mh = String(item.maMonHoc || "").trim();
-    return (lhp && regKeys.has(lhp)) || (hp && regKeys.has(hp)) || (mh && regKeys.has(mh));
+    const ten = removeVietnameseTones(String(item.tenMonHoc || "").toLowerCase().trim());
+    return (
+      (lhp && regKeys.has(lhp)) ||
+      (hp && regKeys.has(hp)) ||
+      (mh && regKeys.has(mh)) ||
+      (ten && regNames.has(ten))
+    );
   };
 
   // Kết hợp lịch học Đã ĐK + lịch học Dự kiến
@@ -4028,7 +4121,8 @@ async function loadLhpTab(forceRefresh = false, targetIdDot = null) {
   const dotObj = _lhpDotsCache.find((d) => String(d.value) === activeIdDot);
   const dotText = dotObj ? dotObj.text : `Đợt ${activeIdDot}`;
 
-  if (!forceRefresh) {
+  const cachedRows = _lhpDataByDotCache[activeIdDot]?.rows;
+  if (!forceRefresh && Array.isArray(cachedRows) && cachedRows.length > 0) {
     showOnly(tableSectionEl);
     refreshLhpPlannerView(activeIdDot);
     return;

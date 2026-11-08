@@ -1194,48 +1194,46 @@
       const tds = tr.querySelectorAll("td");
       if (tds.length < 3) return;
 
-      let maLHP = "";
-      let tenMon = "";
-      let lopDuKien = "";
-      let soTC = 0;
-      let maNhomTH = 0;
-      let hocPhi = 0;
+      // Trích xuất mã ID mã hóa và tổ thực hành từ hàm XemLichHoc('...', nhomTH)
+      const xemMatch = tr.innerHTML.match(/XemLichHoc\s*\(\s*['"]([^'"]+)['"]\s*,\s*(\d+)\s*\)/i);
+      const idEncrypted = xemMatch ? xemMatch[1] : "";
+      const nhomFromXem = xemMatch ? parseInt(xemMatch[2], 10) : 0;
 
-      tds.forEach((td, idx) => {
-        const txt = td.textContent.trim();
-        // 1. Tìm Mã LHP (chuỗi 10 - 12 chữ số)
-        const m12 = txt.match(/\b\d{10,12}\b/);
-        if (m12 && !maLHP) {
-          maLHP = m12[0];
-        }
-        // 2. Tên môn học (chuỗi chữ dài hơn 4 ký tự, không phải số, thường ở cột 1-3)
-        if (!tenMon && idx >= 1 && idx <= 3 && txt.length > 4 && !/^\d+$/.test(txt)) {
-          tenMon = txt;
-        }
-        // 3. Số tín chỉ (1 - 10)
-        if (/^\d{1,2}$/.test(txt) && Number(txt) > 0 && Number(txt) <= 12 && soTC === 0 && idx >= 2 && idx <= 5) {
-          soTC = Number(txt);
-        }
-        // 4. Nhóm thực hành
-        if (txt.toLowerCase().includes("nhóm") || txt.toLowerCase().includes("tổ")) {
-          const tm = txt.match(/\d+/);
-          if (tm) maNhomTH = Number(tm[0]);
-        } else if (/^\d{1,2}$/.test(txt) && Number(txt) > 0 && soTC > 0 && maNhomTH === 0 && idx >= 4) {
-          maNhomTH = Number(txt);
-        }
-        // 5. Học phí (dạng 1,234,000 hoặc 1234000)
-        const feeMatch = txt.replace(/[,.]/g, "").match(/\b\d{6,8}\b/);
-        if (feeMatch && hocPhi === 0) {
-          hocPhi = Number(feeMatch[0]);
-        }
-        // 6. Lớp dự kiến (VD: DHKTPM18A...)
-        if (txt.match(/^[A-Z0-9]{5,15}$/) && !maLHP.includes(txt) && !lopDuKien && idx >= 2) {
-          lopDuKien = txt;
-        }
-      });
+      // Cột chuẩn IUH DKHP:
+      // Col 0: Thao tác (XemLichHoc), Col 1: STT, Col 2: Mã LHP, Col 3: Tên môn học
+      // Col 4: Lớp DK, Col 5: Số TC, Col 6: Nhóm TH, Col 7: Học phí, Col 10: Trạng thái ĐK, Col 11: Ngày ĐK, Col 12: Trạng thái LHP
+      let maLHP = tds[2] ? tds[2].textContent.trim() : "";
+      let tenMon = tds[3] ? tds[3].textContent.trim() : "";
+      let lopDuKien = tds[4] ? tds[4].textContent.trim() : "";
+      let soTC = tds[5] ? parseInt(tds[5].textContent.trim(), 10) || 0 : 0;
+      let maNhomTH = tds[6] && tds[6].textContent.trim() ? parseInt(tds[6].textContent.trim(), 10) || 0 : nhomFromXem;
+      let hocPhi = tds[7] ? parseInt(tds[7].textContent.replace(/[,.]/g, "").trim(), 10) || 0 : 0;
+      let trangThaiDK = tds[10] ? tds[10].textContent.trim() : "";
+      let ngayDK = tds[11] ? tds[11].textContent.trim() : "";
+      let trangThaiLHP = tds[12] ? tds[12].textContent.trim() : "Đã đăng ký";
+
+      // Fallback quét tự do nếu cấu trúc bảng bị xê dịch
+      if (!maLHP || !tenMon) {
+        tds.forEach((td, idx) => {
+          const txt = td.textContent.trim();
+          const m12 = txt.match(/\b\d{10,12}\b/);
+          if (m12 && !maLHP) maLHP = m12[0];
+          if (!tenMon && idx >= 1 && idx <= 3 && txt.length > 4 && !/^\d+$/.test(txt)) tenMon = txt;
+          if (/^\d{1,2}$/.test(txt) && Number(txt) > 0 && Number(txt) <= 12 && soTC === 0 && idx >= 2 && idx <= 5) soTC = Number(txt);
+          if (txt.toLowerCase().includes("nhóm") || txt.toLowerCase().includes("tổ")) {
+            const tm = txt.match(/\d+/);
+            if (tm && !maNhomTH) maNhomTH = Number(tm[0]);
+          }
+          const feeMatch = txt.replace(/[,.]/g, "").match(/\b\d{6,8}\b/);
+          if (feeMatch && hocPhi === 0) hocPhi = Number(feeMatch[0]);
+          if (txt.match(/^[A-Z0-9]{5,15}$/) && !maLHP.includes(txt) && !lopDuKien && idx >= 2) lopDuKien = txt;
+        });
+      }
 
       if (maLHP || tenMon) {
         rows.push({
+          IdLopHocPhanString: idEncrypted,
+          IDLopHocPhanEncrypted: idEncrypted,
           MaLopHocPhan: maLHP,
           MaLHP: maLHP,
           TenMonHoc: tenMon,
@@ -1243,7 +1241,9 @@
           SoTinChi: soTC || 3,
           MaNhomThucHanh: maNhomTH,
           HocPhi: hocPhi,
-          TrangThaiLopHocPhan: "Đã đăng ký",
+          TrangThaiDK: trangThaiDK,
+          NgayDangKy: ngayDK,
+          TrangThaiLopHocPhan: trangThaiLHP || "Đã đăng ký",
         });
       }
     });
@@ -1263,6 +1263,17 @@
             cached[dot].rows.push(newR);
           }
         });
+        // Lọc sạch các lịch học cũ nếu nhóm thực hành không khớp
+        if (Array.isArray(cached[dot].schedules)) {
+          cached[dot].schedules = cached[dot].schedules.filter((s) => {
+            const row = cached[dot].rows.find((r) => (r.MaLopHocPhan || r.MaLHP) === s.maLHP);
+            if (!row) return true;
+            if (!s.isLT && row.MaNhomThucHanh > 0 && s.nhomTH != null && Number(s.nhomTH) > 0) {
+              return Number(s.nhomTH) === Number(row.MaNhomThucHanh);
+            }
+            return true;
+          });
+        }
         chrome.storage.local.set({
           iuh_lhp_data_by_dot: cached,
           iuh_lhp_data: cached[dot].rows,
