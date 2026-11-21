@@ -177,24 +177,26 @@
         font-weight: 600;
         background: var(--bg-dark);
         color: var(--text-main);
-        outline: none;
       }
-      #ctk-search-input:focus,
-      #lhp-semester-select:focus {
+      #ctk-search-input:focus-visible,
+      #lhp-semester-select:focus-visible,
+      #lhp-course-search:focus-visible,
+      #lhp-hinhthuc-select:focus-visible {
         border-color: var(--primary) !important;
         box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
       }
-      .pc-hex-input:focus {
+      .pc-hex-input:focus-visible {
         border-color: var(--primary);
       }
     </style>
   </head>
   <body>
     <div class="app-container">
+      <a href="#main-content" class="skip-link visually-hidden">Bỏ qua thanh điều hướng, tới nội dung chính</a>
       <aside class="left-sidebar">
         <div class="sidebar-logo">🎓 IUH Dashboard</div>
 
-        <nav class="sidebar-nav">
+        <nav class="sidebar-nav" aria-label="Điều hướng chính">
           <a href="#" id="nav-grades" class="active">📊 Kết quả học tập</a>
           <a href="#" id="nav-schedule">📅 Lịch học & Đồng bộ</a>
           <a href="#" id="nav-survey">📝 Khảo sát tự động</a>
@@ -213,19 +215,12 @@
           <a
             href="#"
             id="nav-settings"
-            style="
-              display: block;
-              padding: 12px 16px;
-              color: var(--text-muted);
-              text-decoration: none;
-              border-radius: 8px;
-            "
             >⚙️ Cài đặt hệ thống</a
           >
         </div>
       </aside>
 
-      <main class="main-content">
+      <main class="main-content" id="main-content" tabindex="-1">
         <div id="tab-content-grades" class="tab-pane">
           <header class="topbar">
             <div>
@@ -302,30 +297,30 @@
               <table class="grade-table">
                 <thead>
                   <tr>
-                    <th rowspan="2">Mã HP</th>
-                    <th rowspan="2">Tên Môn Học</th>
-                    <th rowspan="2" class="text-center">Số TC</th>
-                    <th colspan="6" class="text-center group-th">Thường Kỳ</th>
-                    <th colspan="4" class="text-center group-th">Thực Hành</th>
-                    <th rowspan="2" class="text-center">GK</th>
-                    <th rowspan="2" class="text-center">CK</th>
-                    <th rowspan="2" class="text-center">Hệ 10</th>
-                    <th rowspan="2" class="text-center">Hệ 4</th>
-                    <th rowspan="2" class="text-center">Chữ</th>
-                    <th rowspan="2" class="text-center">Xếp Loại</th>
-                    <th rowspan="2" class="text-center">Đạt</th>
+                    <th scope="col" rowspan="2">Mã HP</th>
+                    <th scope="col" rowspan="2">Tên Môn Học</th>
+                    <th scope="col" rowspan="2" class="text-center">Số TC</th>
+                    <th scope="colgroup" colspan="6" class="text-center group-th">Thường Kỳ</th>
+                    <th scope="colgroup" colspan="4" class="text-center group-th">Thực Hành</th>
+                    <th scope="col" rowspan="2" class="text-center">GK</th>
+                    <th scope="col" rowspan="2" class="text-center">CK</th>
+                    <th scope="col" rowspan="2" class="text-center">Hệ 10</th>
+                    <th scope="col" rowspan="2" class="text-center">Hệ 4</th>
+                    <th scope="col" rowspan="2" class="text-center">Chữ</th>
+                    <th scope="col" rowspan="2" class="text-center">Xếp Loại</th>
+                    <th scope="col" rowspan="2" class="text-center">Đạt</th>
                   </tr>
                   <tr>
-                    <th class="text-center sub-th">1</th>
-                    <th class="text-center sub-th">2</th>
-                    <th class="text-center sub-th">3</th>
-                    <th class="text-center sub-th">4</th>
-                    <th class="text-center sub-th">5</th>
-                    <th class="text-center sub-th">6</th>
-                    <th class="text-center sub-th">1</th>
-                    <th class="text-center sub-th">2</th>
-                    <th class="text-center sub-th">3</th>
-                    <th class="text-center sub-th">4</th>
+                    <th scope="col" class="text-center sub-th">1</th>
+                    <th scope="col" class="text-center sub-th">2</th>
+                    <th scope="col" class="text-center sub-th">3</th>
+                    <th scope="col" class="text-center sub-th">4</th>
+                    <th scope="col" class="text-center sub-th">5</th>
+                    <th scope="col" class="text-center sub-th">6</th>
+                    <th scope="col" class="text-center sub-th">1</th>
+                    <th scope="col" class="text-center sub-th">2</th>
+                    <th scope="col" class="text-center sub-th">3</th>
+                    <th scope="col" class="text-center sub-th">4</th>
                   </tr>
                 </thead>
                 <tbody id="grade-table-body">
@@ -365,6 +360,7 @@
           >
             <div style="margin-bottom: 24px">
               <label
+                for="setting-user"
                 style="
                   display: block;
                   margin-bottom: 8px;
@@ -376,6 +372,7 @@
               <input
                 type="text"
                 id="setting-user"
+                autocomplete="username"
                 style="
                   width: 100%;
                   padding: 12px;
@@ -391,6 +388,7 @@
 
             <div style="margin-bottom: 24px">
               <label
+                for="setting-pass"
                 style="
                   display: block;
                   margin-bottom: 8px;
@@ -410,6 +408,7 @@
                 <input
                   type="password"
                   id="setting-pass"
+                  autocomplete="current-password"
                   style="
                     width: 100%;
                     padding: 12px;
@@ -426,6 +425,7 @@
                 <button
                   type="button"
                   id="btn-toggle-password"
+                  aria-label="Hiện hoặc ẩn mật khẩu"
                   style="
                     position: absolute;
                     right: 12px;
@@ -437,12 +437,13 @@
                     align-items: center;
                     justify-content: center;
                     height: 100%;
-                    padding: 0;
+                    padding: 0 4px;
                     transition: color 0.2s;
                   "
                   title="Hiện/Ẩn mật khẩu"
                 >
                   <svg
+                    aria-hidden="true"
                     xmlns="http://www.w3.org/2000/svg"
                     width="20"
                     height="20"
@@ -464,6 +465,7 @@
 
             <div style="margin-bottom: 24px">
               <label
+                for="setting-webapp-url"
                 style="
                   display: block;
                   margin-bottom: 8px;
@@ -473,7 +475,7 @@
                 >Link Google Apps Script (GAS):</label
               >
               <input
-                type="text"
+                type="url"
                 id="setting-webapp-url"
                 placeholder="https://script.google.com/macros/s/.../exec"
                 style="
@@ -705,9 +707,20 @@
                 Toàn bộ các học phần trong chương trình đào tạo của bạn.
               </p>
             </div>
-            <button id="btn-refresh-ctk" class="btn-primary">
-              <span class="icon">🔄</span> Tải lại
-            </button>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <button
+                type="button"
+                id="ctk-heartbeat-badge"
+                class="lhp-mini-btn"
+                title="Trạng thái Heartbeat giữ phiên DKHP (Bấm để ping giữ phiên ngay)"
+                style="padding: 7px 11px; font-size: 12px; border-radius: 8px;"
+              >
+                💓 DKHP: Đang kiểm tra...
+              </button>
+              <button id="btn-refresh-ctk" class="btn-primary">
+                <span class="icon">🔄</span> Tải lại
+              </button>
+            </div>
           </header>
 
           <!-- Auth gate: hiển thị khi chưa đăng nhập dkhp.iuh.edu.vn -->
@@ -733,12 +746,13 @@
               <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
                 <span id="ctk-summary-required" style="font-size: 13px; color: var(--text-muted);"></span>
                 <span id="ctk-summary-done" style="font-size: 13px; color: var(--text-muted);"></span>
-                <span id="ctk-search-count" style="font-size: 13px; color: var(--primary); font-weight: 600; display: none;"></span>
+                <span id="ctk-search-count" role="status" aria-live="polite" style="font-size: 13px; color: var(--primary); font-weight: 600; display: none;"></span>
               </div>
               <div style="position: relative; width: 100%; max-width: 340px;">
                 <input
                   type="text"
                   id="ctk-search-input"
+                  aria-label="Tìm kiếm môn học, mã môn học hoặc mã học phần"
                   placeholder="🔍 Tìm kiếm môn học, mã MH, mã HP..."
                   style="
                     width: 100%;
@@ -748,13 +762,14 @@
                     background: var(--bg-dark);
                     color: var(--text-main);
                     font-size: 13px;
-                    outline: none;
                     box-sizing: border-box;
                     transition: border-color 0.2s, box-shadow 0.2s;
                   "
                 />
                 <button
+                  type="button"
                   id="ctk-search-clear"
+                  aria-label="Xóa tìm kiếm chương trình khung"
                   style="
                     position: absolute;
                     right: 8px;
@@ -777,14 +792,14 @@
               <table class="grade-table" id="ctk-table">
                 <thead>
                   <tr>
-                    <th>STT</th>
-                    <th>Mã MH</th>
-                    <th style="text-align: left; min-width: 200px">Tên môn học</th>
-                    <th>Mã HP</th>
-                    <th class="text-center">TC</th>
-                    <th>Tiên quyết <span style="color:#fc8181">(b)</span> / Trước <span style="color:#f6ad55">(a)</span> / Song hành <span style="color:#68d391">(c)</span></th>
-                    <th title="Môn này là học phần Tiên quyết (b) / Học trước (a) / Song hành (c) của những môn nào?">Là ĐK <span style="color:#fc8181">(b)</span> / <span style="color:#f6ad55">(a)</span> / <span style="color:#68d391">(c)</span> của môn</th>
-                    <th class="text-center">Trạng thái</th>
+                    <th scope="col">STT</th>
+                    <th scope="col">Mã MH</th>
+                    <th scope="col" style="text-align: left; min-width: 200px">Tên môn học</th>
+                    <th scope="col">Mã HP</th>
+                    <th scope="col" class="text-center">TC</th>
+                    <th scope="col">Tiên quyết <span style="color:#fc8181">(b)</span> / Trước <span style="color:#f6ad55">(a)</span> / Song hành <span style="color:#68d391">(c)</span></th>
+                    <th scope="col" title="Môn này là học phần Tiên quyết (b) / Học trước (a) / Song hành (c) của những môn nào?">Là ĐK <span style="color:#fc8181">(b)</span> / <span style="color:#f6ad55">(a)</span> / <span style="color:#68d391">(c)</span> của môn</th>
+                    <th scope="col" class="text-center">Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody id="ctk-table-body">
@@ -810,6 +825,7 @@
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
               <select
                 id="lhp-hinhthuc-select"
+                aria-label="Hình thức đăng ký học phần"
                 title="Hình thức đăng ký trên DKHP"
                 style="
                   background: var(--bg-dark);
@@ -819,7 +835,6 @@
                   border-radius: 8px;
                   font-size: 13px;
                   font-weight: 500;
-                  outline: none;
                   cursor: pointer;
                 "
               >
@@ -829,6 +844,7 @@
               </select>
               <select
                 id="lhp-semester-select"
+                aria-label="Chọn đợt đăng ký hoặc học kỳ"
                 title="Chọn đợt đăng ký / học kỳ"
                 style="
                   background: var(--bg-dark);
@@ -838,7 +854,6 @@
                   border-radius: 8px;
                   font-size: 13px;
                   font-weight: 500;
-                  outline: none;
                   cursor: pointer;
                   min-width: 185px;
                   transition: border-color 0.2s, box-shadow 0.2s;
@@ -869,6 +884,15 @@
                 title="Đẩy các môn dự kiến sang Bảng điểm để nhập thử điểm và tính GPA tích lũy"
               >
                 <span class="icon">📊</span> Mô phỏng GPA
+              </button>
+              <button
+                type="button"
+                id="dkhp-heartbeat-badge"
+                class="lhp-mini-btn"
+                title="Trạng thái Heartbeat giữ phiên DKHP (Bấm để ping giữ phiên ngay)"
+                style="padding: 8px 11px; font-size: 12px; border-radius: 8px;"
+              >
+                💓 DKHP: Đang kiểm tra...
               </button>
               <button id="btn-refresh-lhp" class="btn-primary">
                 <span class="icon">🔄</span> Tải lại từ DKHP
@@ -948,6 +972,7 @@
                     <input
                       type="text"
                       id="lhp-course-search"
+                      aria-label="Tìm kiếm môn học trong danh sách đang mở"
                       placeholder="🔍 Tìm trong danh sách đang mở..."
                       style="
                         width: 100%;
@@ -957,13 +982,13 @@
                         background: var(--bg-dark);
                         color: var(--text-main);
                         font-size: 12.5px;
-                        outline: none;
                         box-sizing: border-box;
                       "
                     />
                     <button
                       id="lhp-course-search-clear"
                       type="button"
+                      aria-label="Xóa tìm kiếm môn học"
                       style="
                         position: absolute;
                         right: 8px;
@@ -1025,16 +1050,16 @@
                     <table class="grade-table" id="lhp-table">
                       <thead>
                         <tr>
-                          <th style="text-align:center">STT</th>
-                          <th style="text-align:center">Phân loại</th>
-                          <th>Mã LHP / HP</th>
-                          <th style="text-align:left; min-width:190px">Tên môn học</th>
-                          <th>Lớp / Lịch</th>
-                          <th class="text-center">TC (LT/TH)</th>
-                          <th class="text-center">Nhóm TH</th>
-                          <th style="text-align:right">Học phí</th>
-                          <th>Trạng thái / ĐK</th>
-                          <th class="text-center">Thao tác</th>
+                          <th scope="col" style="text-align:center">STT</th>
+                          <th scope="col" style="text-align:center">Phân loại</th>
+                          <th scope="col">Mã LHP / HP</th>
+                          <th scope="col" style="text-align:left; min-width:190px">Tên môn học</th>
+                          <th scope="col">Lớp / Lịch</th>
+                          <th scope="col" class="text-center">TC (LT/TH)</th>
+                          <th scope="col" class="text-center">Nhóm TH</th>
+                          <th scope="col" style="text-align:right">Học phí</th>
+                          <th scope="col">Trạng thái / ĐK</th>
+                          <th scope="col" class="text-center">Thao tác</th>
                         </tr>
                       </thead>
                       <tbody id="lhp-table-body">
@@ -1049,6 +1074,9 @@
           <!-- Modal Trung tâm Tự động Đăng ký Học phần (Auto-ĐKHP Control Center) -->
           <div
             id="lhp-autoreg-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lhp-autoreg-title"
             style="
               position: fixed;
               inset: 0;
@@ -1070,14 +1098,14 @@
                 style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(16, 185, 129, 0.14));"
               >
                 <div>
-                  <h3 style="margin: 0; font-size: 16px; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                  <h3 id="lhp-autoreg-title" style="margin: 0; font-size: 16px; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
                     🚀 Trung tâm Tự động Đăng ký Học phần (Auto-ĐKHP)
                   </h3>
                   <div id="lhp-autoreg-subtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
                     Thực thi đăng ký siêu tốc qua API trực tiếp hoặc canh slot tự động từ danh sách Clipboard
                   </div>
                 </div>
-                <button type="button" class="lhp-modal-close" id="btn-close-autoreg-modal" title="Đóng">✕</button>
+                <button type="button" class="lhp-modal-close" id="btn-close-autoreg-modal" aria-label="Đóng hộp thoại tự động đăng ký" title="Đóng">✕</button>
               </div>
 
               <div class="lhp-modal-body" style="display: flex; flex-direction: column; gap: 14px;">
@@ -1215,6 +1243,9 @@
 
     <div
       id="modal-weeks-sync"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-weeks-sync-title"
       style="
         display: none;
         position: fixed;
@@ -1223,9 +1254,12 @@
         width: 100%;
         height: 100%;
         background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
         z-index: 9999;
         align-items: center;
         justify-content: center;
+        padding: 16px;
+        box-sizing: border-box;
       "
     >
       <div
@@ -1234,19 +1268,20 @@
           padding: 24px;
           border-radius: 12px;
           border: 1px solid var(--border-color);
-          width: 400px;
+          width: min(420px, calc(100vw - 32px));
           box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
           box-sizing: border-box;
         "
       >
-        <h3 style="margin-top: 0; color: var(--primary)">
+        <h3 id="modal-weeks-sync-title" style="margin-top: 0; color: var(--primary)">
           📅 Đồng bộ lịch học & Lịch thi
         </h3>
-        <p
-          style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px"
+        <label
+          for="sync-weeks-input"
+          style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 12px"
         >
           Nhập số tuần bạn muốn hệ thống quét dữ liệu biểu lịch học:
-        </p>
+        </label>
 
         <div style="margin-bottom: 16px">
           <input

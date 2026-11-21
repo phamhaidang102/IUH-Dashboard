@@ -350,6 +350,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const saveBtn = document.getElementById("saveBtn");
   const status = document.getElementById("status");
 
+  const STORAGE_COLOR_MAP = {
+    "ly-thuyet": "calendarColorDirect",
+    "thuc-hanh": "calendarColorPractice",
+    "truc-tuyen": "calendarColorOnline",
+    thi: "calendarColorExam",
+    "tam-ngung": "calendarColorPostponed",
+  };
+
   chrome.storage.sync.get(
     [
       "webAppUrl",
@@ -360,6 +368,11 @@ document.addEventListener("DOMContentLoaded", () => {
       "autoCaptcha",
       "autoClickLogin",
       "customColors",
+      "calendarColorDirect",
+      "calendarColorOnline",
+      "calendarColorPractice",
+      "calendarColorPostponed",
+      "calendarColorExam",
     ],
     (data) => {
       if (data.webAppUrl) scriptUrlInput.value = data.webAppUrl;
@@ -371,14 +384,17 @@ document.addEventListener("DOMContentLoaded", () => {
       autoCaptchaToggle.checked = data.autoCaptcha !== false;
       autoClickToggle.checked = data.autoClickLogin !== false;
 
-      // Load saved hex colors (or use defaults)
+      // Load saved hex colors (đồng bộ cả customColors lẫn calendarColor* từ portal.js)
       const saved = data.customColors || {};
       COLOR_KEYS.forEach((key) => {
-        const hex =
+        const directKey = STORAGE_COLOR_MAP[key];
+        const candidate =
           saved[key] && isValidHex(saved[key])
             ? saved[key]
+            : data[directKey] && isValidHex(data[directKey])
+            ? data[directKey]
             : DEFAULT_COLORS[key];
-        commitColor(key, hex);
+        commitColor(key, candidate);
       });
     },
   );
@@ -396,12 +412,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const customColorsObj = {};
+    const portalColorFields = {};
     COLOR_KEYS.forEach((key) => {
       const triggerHex = document.getElementById("trigger-" + key)?.dataset?.hex;
       const hiddenHex = document.getElementById("color-" + key)?.value;
       const candidate = triggerHex || hiddenHex;
-      customColorsObj[key] =
+      const validHex =
         candidate && isValidHex(candidate) ? candidate : DEFAULT_COLORS[key];
+      customColorsObj[key] = validHex;
+      portalColorFields[STORAGE_COLOR_MAP[key]] = validHex;
     });
 
     chrome.storage.sync.set(
@@ -414,6 +433,7 @@ document.addEventListener("DOMContentLoaded", () => {
         autoCaptcha: autoCaptchaToggle.checked,
         autoClickLogin: autoClickToggle.checked,
         customColors: customColorsObj,
+        ...portalColorFields,
       },
       () => {
         status.style.color = "#0f9d58";

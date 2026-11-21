@@ -56,6 +56,145 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   }
 }
 
+/**
+ * Tìm tab https://dkhp.iuh.edu.vn đang mở (ưu tiên tab /DangKyHocPhan).
+ * Nếu có tab đang mở, mọi request sẽ đi qua Content Script Proxy (first-party, same-origin)
+ * để tránh trình duyệt gắn Sec-Fetch-Site: cross-site hoặc strip SameSite cookies làm out session!
+ */
+async function findDkhpTabsOrdered() {
+  try {
+    const tabs = await new Promise((resolve) => {
+      chrome.tabs.query({ url: "*://dkhp.iuh.edu.vn/*" }, (t) => resolve(t || []));
+    });
+    if (!Array.isArray(tabs) || tabs.length === 0) return [];
+    return [...tabs].sort((a, b) => {
+      const aUrl = String(a.url || "").toLowerCase();
+      const bUrl = String(b.url || "").toLowerCase();
+      const aScore = (aUrl.includes("dangkyhocphan") ? 2 : 0) + (a.active ? 1 : 0);
+      const bScore = (bUrl.includes("dangkyhocphan") ? 2 : 0) + (b.active ? 1 : 0);
+      return bScore - aScore;
+    });
+  } catch (_) {
+    return [];
+  }
+}
+
+async function dkhpProxyViaOpenTab(path, options = {}, timeoutMs = 15000, preloadedTabs = null) {
+  const tabs = Array.isArray(preloadedTabs) ? preloadedTabs : await findDkhpTabsOrdered();
+  for (const tab of tabs) {
+    if (!tab || !tab.id) continue;
+    const resp = await new Promise((resolve) => {
+      let settled = false;
+      const fallbackTimer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve(null);
+        }
+      }, timeoutMs + 2500);
+      try {
+        chrome.tabs.sendMessage(
+          tab.id,
+          {
+            action: "dkhpProxyFetch",
+            path,
+            method: options.method || "POST",
+            headers: options.headers || {},
+            body: options.body !== undefined ? String(options.body) : "",
+            timeoutMs,
+          },
+          (r) => {
+            clearTimeout(fallbackTimer);
+            if (settled) return;
+            settled = true;
+            if (chrome.runtime.lastError || !r) resolve(null);
+            else resolve(r);
+          }
+        );
+      } catch (_) {
+        clearTimeout(fallbackTimer);
+        if (!settled) {
+          settled = true;
+          resolve(null);
+        }
+      }
+    });
+
+    if (resp) {
+      return {
+        viaTab: true,
+        tabId: tab.id,
+        unauthenticated: Boolean(resp.unauthenticated),
+        res: {
+          ok: Boolean(resp.ok),
+          status: resp.status || 0,
+          statusText: resp.statusText || "",
+          url: resp.url || "",
+          headers: {
+            get: (name) =>
+              String(name || "").toLowerCase() === "content-type"
+                ? resp.contentType || ""
+                : "",
+          },
+        },
+        text: resp.text || "",
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Gửi request tới dkhp.iuh.edu.vn ưu tiên 100% qua Content Script của tab DKHP đang mở.
+ * CHÚ Ý: Nếu phát hiện có tab dkhp.iuh.edu.vn đang mở mà sendMessage thất bại (VD: tab mở trước khi reload extension),
+ * TUYỆT ĐỐI không tự ý fallback fetch cross-site (vì gửi request cross-site trong khi user đang giữ tab DKHP sẽ khiến server reset session!).
+ */
+async function dkhpSafeRequest(path, options = {}, timeoutMs = 15000, allowDirectFallback = true) {
+  const openTabs = await findDkhpTabsOrdered();
+  const proxyRes = await dkhpProxyViaOpenTab(path, options, timeoutMs, openTabs);
+  if (proxyRes) {
+    if (proxyRes.unauthenticated) {
+      return {
+        viaTab: true,
+        res: { ok: false, status: 401, statusText: "Unauthorized", headers: { get: () => "" } },
+        text: "frmLogin",
+      };
+    }
+    return proxyRes;
+  }
+
+  // Nếu có tab DKHP đang mở nhưng Content Script chưa phản hồi -> Không gửi cross-site request gây out session
+  if (openTabs.length > 0) {
+    console.warn("[DKHP] Có tab DKHP đang mở nhưng chưa nạp Content Script proxy. Vui lòng F5 tab dkhp.iuh.edu.vn!");
+    return {
+      viaTab: false,
+      staleContentScript: true,
+      res: null,
+      text: "",
+    };
+  }
+
+  if (!allowDirectFallback) {
+    return {
+      viaTab: false,
+      noOpenTab: true,
+      res: null,
+      text: "",
+    };
+  }
+
+  const fullUrl = path.startsWith("http") ? path : `${DKHP_BASE}${path}`;
+  return dkhpEnqueue(() =>
+    fetchWithTimeout(
+      fullUrl,
+      {
+        credentials: "include",
+        ...options,
+      },
+      timeoutMs
+    )
+  );
+}
+
 function dkhpNoteResult(ok, blocked = false, serverBusy = false) {
   if (blocked) _dkhpBlocked = true;
   if (ok) {
@@ -219,20 +358,18 @@ function classifyDkhpRegResponse(regRes, targetMaLHP) {
 async function fetchChuongTrinhKhung() {
   let res, text;
   try {
-    ({ res, text } = await dkhpEnqueue(() =>
-      fetchWithTimeout(
-        `${DKHP_BASE}/ChuongTrinhKhung/GetChuongTrinhKhung`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          body: "",
+    ({ res, text } = await dkhpSafeRequest(
+      "/ChuongTrinhKhung/GetChuongTrinhKhung",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
         },
-        15000
-      )
+        body: "",
+      },
+      15000,
+      true
     ));
   } catch (err) {
     console.error("[DKHP] Lỗi mạng khi fetchChuongTrinhKhung:", err);
@@ -244,7 +381,7 @@ async function fetchChuongTrinhKhung() {
     return null;
   }
 
-  // Response text đã được đọc trong fetchWithTimeout
+  // Response text đã được đọc trong dkhpSafeRequest
   if (!text) return null;
 
   // Neu response chua HTML tag (trang login) => chua dang nhap
@@ -453,19 +590,26 @@ function renderChuongTrinhKhung(data, searchQuery) {
   // Tinh tong so mon va so mon da dat tren toan bo chuong trinh khung
   let fullTotal = 0;
   let fullDone = 0;
+  let computedTotalTC = 0;
   (data.ChuongTrinhHocKy || []).forEach((hocKy) => {
+    const hkTc = Number(hocKy.SoTinChiHocKy || 0);
+    let hkCoursesTc = 0;
     (hocKy.HocPhanBatBuoc || []).forEach((hp) => {
       fullTotal++;
       if (hp.IsDat) fullDone++;
+      hkCoursesTc += parseInt(hp.DVHT || hp.SoTinChi || 0, 10) || 0;
     });
     (hocKy.HocPhanTuChon || []).forEach((hp) => {
       fullTotal++;
       if (hp.IsDat) fullDone++;
+      hkCoursesTc += parseInt(hp.DVHT || hp.SoTinChi || 0, 10) || 0;
     });
+    computedTotalTC += hkTc > 0 ? hkTc : hkCoursesTc;
   });
 
+  const requiredTC = Number(data.TongSoTCYeuCau || 0) || computedTotalTC;
   if (summaryRequired)
-    summaryRequired.textContent = `Tổng yêu cầu: ${data.TongSoTCYeuCau || 0} TC`;
+    summaryRequired.textContent = `Tổng yêu cầu: ${requiredTC} TC`;
   if (summaryDone)
     summaryDone.textContent = `Đã đạt: ${fullDone}/${fullTotal} môn`;
 
@@ -675,8 +819,8 @@ function ensureCtkTooltipInitialized() {
         border-radius: 10px;
         box-shadow: 0 14px 38px rgba(0, 0, 0, 0.65);
         padding: 12px 14px;
-        max-width: 860px;
-        min-width: 520px;
+        max-width: min(860px, calc(100vw - 24px));
+        min-width: min(520px, calc(100vw - 24px));
         color: var(--text-main);
         pointer-events: auto;
       }
@@ -1044,28 +1188,25 @@ async function loadCtkTab(forceRefresh = false) {
 // =============================================================================
 
 async function _dkhpPost(path, body = "", timeoutMs = 15000) {
-  const url = `${DKHP_BASE}${path}`;
-  console.log("[DKHP] POST →", url, "| body:", body || "(empty)");
+  console.log("[DKHP] POST →", path, "| body:", body || "(empty)");
 
   let res;
   let text;
   try {
-    // Xếp hàng: mỗi request chạy tuần tự, có timeout tự ngắt tránh treo ASP.NET Session
-    ({ res, text } = await dkhpEnqueue(async () => {
-      return fetchWithTimeout(
-        url,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          body,
+    // Ưu tiên proxy 100% qua tab DKHP (same-origin) để giữ session tuyệt đối an toàn
+    ({ res, text } = await dkhpSafeRequest(
+      path,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
         },
-        timeoutMs
-      );
-    }));
+        body,
+      },
+      timeoutMs,
+      true
+    ));
   } catch (networkErr) {
     console.error("[DKHP] Lỗi mạng hoặc quá thời gian chờ (timeout):", networkErr);
     dkhpNoteResult(false);
@@ -1135,25 +1276,86 @@ function getDanhSachDotDangKy() {
   ];
 }
 
+function _formatDotNetDate(raw) {
+  if (!raw) return "";
+  const str = String(raw).trim();
+  const m = str.match(/\/Date\((\d+)\)\//);
+  if (m) {
+    const d = new Date(parseInt(m[1], 10));
+    if (!isNaN(d.getTime())) {
+      const dd = String(d.getDate()).padStart(2, "0");
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const yyyy = d.getFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    }
+  }
+  return str;
+}
+
 /**
- * Tải trực tiếp trang HTML /DangKyHocPhan qua mạng ngầm (Background Fetch)
- * và bóc tách bảng #lopDaDK mà KHÔNG CẦN người dùng phải mở tab dkhp.iuh.edu.vn.
+ * Tải danh sách lớp học phần đã đăng ký theo idDot qua API AJAX chuẩn của DKHP,
+ * đi qua First-Party Tab Proxy (dkhpSafeRequest) nếu có tab DKHP đang mở.
  */
 async function fetchAndParseLopDaDkFromHtml(idDot) {
   try {
-    const { res, text } = await dkhpEnqueue(async () => {
-      return fetchWithTimeout(
-        `${DKHP_BASE}/DangKyHocPhan`,
-        {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          },
+    const apiRes = await _dkhpPost(
+      "/DangKyHocPhan/GetDanhSachLopHocPhanDaDangKy",
+      `idDot=${encodeURIComponent(Number(idDot))}`,
+      15000
+    );
+
+    if (Array.isArray(apiRes)) {
+      const mapped = apiRes
+        .filter((item) => item && (item.MaLopHocPhan || item.TenMonHoc || item.IdLopHocPhanString))
+        .map((item) => {
+          const maLHP = String(item.MaLopHocPhan || item.MaLHP || "").trim();
+          const maHP = String(
+            item.MaHocPhan || (maLHP.length >= 10 ? maLHP.substring(0, 10) : "")
+          ).trim();
+          const idEnc = String(
+            item.IdLopHocPhanString || item.IDLopHocPhanEncrypted || ""
+          ).trim();
+          return {
+            IdLopHocPhanString: idEnc,
+            IDLopHocPhanEncrypted: idEnc,
+            IDDangKyHocPhan: item.IDDangKyHocPhan || 0,
+            MaLopHocPhan: maLHP,
+            MaLHP: maLHP,
+            MaHocPhan: maHP,
+            TenMonHoc: String(item.TenMonHoc || "").trim(),
+            LopDuKien: String(item.LopDuKien || "").trim(),
+            SoTinChi: Number(item.SoTinChi || 0) || 3,
+            MaNhomThucHanh:
+              item.MaNhomThucHanh != null ? Number(item.MaNhomThucHanh) || 0 : 0,
+            HocPhi: Number(item.HocPhi || 0) || 0,
+            TrangThaiDK: String(
+              item.TrangThaiDangKy || item.TrangThaiDK || item.TenNguonDangKy || ""
+            ).trim(),
+            NgayDangKy: _formatDotNetDate(item.NgayDangKy),
+            TrangThaiLopHocPhan: String(
+              item.TrangThaiLopHocPhan || item.TrangThai || "Đã đăng ký"
+            ).trim(),
+          };
+        });
+      console.log(`[DKHP] Đã tải ${mapped.length} môn từ GetDanhSachLopHocPhanDaDangKy (đợt ${idDot}).`);
+      return mapped;
+    }
+
+    if (apiRes && apiRes.serverBusy) {
+      return null;
+    }
+
+    const { res, text } = await dkhpSafeRequest(
+      "/DangKyHocPhan",
+      {
+        method: "GET",
+        headers: {
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         },
-        15000
-      );
-    });
+      },
+      15000,
+      false
+    );
 
     if (!res || !res.ok || !text) return null;
     if (text.includes("frmLogin") || !text.includes("lopDaDK")) return null;
@@ -1349,21 +1551,19 @@ async function fetchDanhSachLopHocPhan(maMonHoc, idDot, maHocPhan = "", maLHP = 
  */
 async function checkDotChoPhepDangKy(idDot) {
   try {
-    const { res, text } = await dkhpEnqueue(async () => {
-      return fetchWithTimeout(
-        `${DKHP_BASE}/DangKyHocPhan/CheckDotChoPhepDangKy`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          body: `idDot=${encodeURIComponent(Number(idDot))}`,
+    const { res, text } = await dkhpSafeRequest(
+      "/DangKyHocPhan/CheckDotChoPhepDangKy",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
         },
-        12000
-      );
-    });
+        body: `idDot=${encodeURIComponent(Number(idDot))}`,
+      },
+      12000,
+      true
+    );
     if (!res) {
       dkhpNoteResult(false);
       return null;
@@ -1457,6 +1657,7 @@ let _isFetchingLhp = false;
 let _lhpSiSoAutoRefreshEnabled = true;
 let _lhpSiSoRefreshIntervalId = null;
 let _lhpSiSoCountdownSec = 120;
+let _lhpSiSoTimerCourseKey = null;
 let _lhpLastSiSoUpdatedAt = {}; // { [classCacheKey]: "HH:MM:SS" }
 
 function getActiveLhpDot() {
@@ -1623,22 +1824,42 @@ function getCourseLtThCredits(courseOrCode, fallbackTotalTC = 0, schedulesOrRow 
     }
   }
 
-  // 2. Kiểm tra trường SoTinChiLT / SoTinChiTH hoặc SoTietLT / SoTietTH trong CTK
+  // 2. Kiểm tra trường SoTinChiLT / SoTinChiTH hoặc SoTietLyThuyet / SoTietThucHanh trong CTK
   if (hp) {
     if (hp.SoTinChiTH != null || hp.SoTinChiLT != null) {
       const tcTH = Math.min(totalTC, Math.max(0, Number(hp.SoTinChiTH) || 0));
       const tcLT = Math.max(0, totalTC - tcTH);
       return { tcLT, tcTH, totalTC };
     }
-    if (hp.SoTietTH != null || hp.TietTH != null || hp.SoTietLT != null || hp.TietLT != null) {
-      const tietTH = Number(hp.SoTietTH ?? hp.TietTH ?? 0);
-      const tietLT = Number(hp.SoTietLT ?? hp.TietLT ?? 0);
+    if (
+      hp.SoTietThucHanh != null ||
+      hp.SoTietTH != null ||
+      hp.TietTH != null ||
+      hp.SoTietLyThuyet != null ||
+      hp.SoTietLT != null ||
+      hp.TietLT != null
+    ) {
+      const tietTH = Number(hp.SoTietThucHanh ?? hp.SoTietTH ?? hp.TietTH ?? 0);
+      const tietLT = Number(hp.SoTietLyThuyet ?? hp.SoTietLT ?? hp.TietLT ?? 0);
       if (tietTH > 0 || tietLT > 0) {
         let tcTH = Math.round(tietTH / 30);
         if (tietTH > 0 && tcTH === 0) tcTH = 1;
         tcTH = Math.min(totalTC, Math.max(0, tcTH));
         const tcLT = Math.max(0, totalTC - tcTH);
         return { tcLT, tcTH, totalTC };
+      }
+    }
+    const rawSoTC = typeof hp.SoTinChi === "string" ? hp.SoTinChi : "";
+    const parenMatch = rawSoTC.match(/^\d+\s*\(\s*(\d+)\s*,\s*(\d+)/);
+    if (parenMatch) {
+      const pLT = parseInt(parenMatch[1], 10) || 0;
+      const pTH = parseInt(parenMatch[2], 10) || 0;
+      if (pLT + pTH === totalTC) {
+        return { tcLT: pLT, tcTH: pTH, totalTC };
+      }
+      if (pTH > 0 && pLT + Math.round(pTH / 2) === totalTC) {
+        const tcTH = Math.round(pTH / 2);
+        return { tcLT: Math.max(0, totalTC - tcTH), tcTH, totalTC };
       }
     }
   }
@@ -2066,9 +2287,11 @@ async function fetchFullLhpDataForDot(idDot, onProgress, forceRefresh = false) {
           else resolve(r);
         });
       });
-      if (resp && resp.ok && resp.data && Array.isArray(resp.data.rows) && resp.data.rows.length > 0) {
-        console.log(`[DKHP] Đồng bộ LHP thành công từ tab DKHP (ID ${tab.id}): ${resp.data.rows.length} môn, ${resp.data.schedules.length} lịch.`);
-        return resp.data;
+      if (resp && resp.ok && resp.data && Array.isArray(resp.data.rows)) {
+        if (resp.data.rows.length > 0 || resp.data.emptyConfirmed) {
+          console.log(`[DKHP] Đồng bộ LHP thành công từ tab DKHP (ID ${tab.id}): ${resp.data.rows.length} môn, ${resp.data.schedules.length} lịch.`);
+          return resp.data;
+        }
       }
     }
   } catch (err) {
@@ -2504,7 +2727,7 @@ function renderLopHocPhanDaDangKy(data, explicitDot = null) {
         ${escapeHtml(row.TrangThaiLopHocPhan || row.TrangThaiLHP || "Đã đăng ký")}
       </td>
       <td style="text-align:center;">
-        <button type="button" class="lhp-mini-btn btn-copy-single-lhp" data-code="${escapeHtml(maLHP)}" title="Copy Mã LHP">📋</button>
+        <button type="button" class="lhp-mini-btn btn-copy-single-lhp" data-code="${escapeHtml(maLHP)}" aria-label="Sao chép mã lớp học phần ${escapeHtml(maLHP)}" title="Copy Mã LHP">📋</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -3152,7 +3375,7 @@ function renderLhpLeftCourseList(activeIdDot = null) {
     card.className = `lhp-course-card ${pinned ? "is-pinned" : ""} ${registered ? "is-registered" : ""} ${isExpanded ? "expanded" : ""}`;
 
     card.innerHTML = `
-      <div class="lhp-course-header">
+      <div class="lhp-course-header" role="button" tabindex="0" aria-expanded="${isExpanded ? "true" : "false"}">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
           <div style="font-weight:700; font-size:13px; color:var(--text-main); line-height:1.35;">
             ${course.isOpenOnDkhp ? `<span title="Môn đang mở ĐK trên DKHP" style="color:#34d399;">●</span> ` : ""}
@@ -3188,33 +3411,47 @@ function renderLhpLeftCourseList(activeIdDot = null) {
               </div>`
             : ""
         }
-
-        ${
-          !prereqEval.ok
-            ? `<div style="background:rgba(245,158,11,0.12); border-left:3px solid #f59e0b; padding:5px 8px; border-radius:4px; font-size:11px; color:#fbbf24;">
-                ${prereqEval.warnings.map((w) => `<div>⚠️ ${escapeHtml(w.label)}</div>`).join("")}
-                ${
-                  prereqEval.missingSongHanhCodes.length > 0
-                    ? `<button type="button" class="lhp-mini-btn btn-pin-song-hanh" data-codes="${escapeHtml(prereqEval.missingSongHanhCodes.join(","))}" style="margin-top:4px; padding:2px 7px; font-size:10.5px;">
-                        ➕ Ghim luôn môn Song hành (c) đi kèm
-                      </button>`
-                    : ""
-                }
-              </div>`
-            : ""
-        }
       </div>
+
+      ${
+        !prereqEval.ok
+          ? `<div style="margin:0 12px 10px; background:rgba(245,158,11,0.12); border-left:3px solid #f59e0b; padding:5px 8px; border-radius:4px; font-size:11px; color:#fbbf24;">
+              ${prereqEval.warnings.map((w) => `<div>⚠️ ${escapeHtml(w.label)}</div>`).join("")}
+              ${
+                prereqEval.missingSongHanhCodes.length > 0
+                  ? `<button type="button" class="lhp-mini-btn btn-pin-song-hanh" data-codes="${escapeHtml(prereqEval.missingSongHanhCodes.join(","))}" style="margin-top:4px; padding:2px 7px; font-size:10.5px;">
+                      ➕ Ghim luôn môn Song hành (c) đi kèm
+                    </button>`
+                  : ""
+              }
+            </div>`
+          : ""
+      }
 
       <div class="lhp-course-body" id="lhp-course-body-${escapeHtml(codeKey)}"></div>
     `;
 
     const headerEl = card.querySelector(".lhp-course-header");
-    headerEl.addEventListener("click", (e) => {
+    const toggleCourseCard = (e) => {
       if (e.target.closest("[data-ctk-code]") || e.target.closest(".btn-pin-song-hanh")) {
         return;
       }
       _lhpExpandedCourseCode = _lhpExpandedCourseCode === codeKey ? null : codeKey;
       renderLhpLeftCourseList(dot);
+    };
+    headerEl.addEventListener("click", toggleCourseCard);
+    headerEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        toggleCourseCard(e);
+      } else if (e.key === " ") {
+        e.preventDefault();
+      }
+    });
+    headerEl.addEventListener("keyup", (e) => {
+      if (e.key === " ") {
+        toggleCourseCard(e);
+      }
     });
 
     const btnSongHanh = card.querySelector(".btn-pin-song-hanh");
@@ -3241,16 +3478,35 @@ function renderLhpLeftCourseList(activeIdDot = null) {
 
 /**
  * Làm mới sĩ số các lớp học phần của môn đang mở (tự động mỗi 2 phút hoặc khi bấm nút).
+ * Trả về { ok, reason } để UI khôi phục trạng thái nút hoặc cảnh báo nếu hết phiên.
  */
 async function refreshCourseSiSo(course, activeIdDot, bodyEl) {
-  // Khong chen request khi dang tai du lieu / dang chay dang ky / da bi WAF chan
-  if (_isFetchingLhp || _autoRegIsRunning || _dkhpBlocked) return;
+  const setStatusNote = (msg, color) => {
+    if (bodyEl && document.body.contains(bodyEl)) {
+      const statusNote = bodyEl.querySelector(".lhp-siso-status-note");
+      if (statusNote) {
+        statusNote.textContent = msg;
+        statusNote.style.color = color;
+      }
+    }
+  };
+
+  // Không chen request khi đang tải dữ liệu / đang chạy đăng ký / đã bị WAF chặn
+  if (_isFetchingLhp || _autoRegIsRunning || _dkhpBlocked) {
+    const busyMsg = _dkhpBlocked
+      ? "⛔ Tạm dừng do cổng DKHP chặn (WAF)"
+      : "⏳ Hệ thống đang xử lý tác vụ khác, thử lại sau...";
+    setStatusNote(busyMsg, _dkhpBlocked ? "#f87171" : "#fbbf24");
+    return { ok: false, reason: "busy" };
+  }
   const codeKey = course.maMonHoc || course.maHocPhan;
   const classCacheKey = `${activeIdDot}_${codeKey}`;
   const currentList = _lhpOpenClassesByCourse[classCacheKey];
-  if (!Array.isArray(currentList) || currentList.length === 0) return;
+  if (!Array.isArray(currentList) || currentList.length === 0) {
+    return { ok: false, reason: "empty" };
+  }
 
-  // Gọi API lấy lại sĩ số mới nhất từ DKHP
+  // Gọi API lấy lại sĩ số mới nhất từ DKHP (đi qua First-Party Tab Proxy nếu có tab DKHP mở)
   const prevMap = {};
   currentList.forEach((c) => {
     const k = c.MaLopHocPhan || c.MaLHP;
@@ -3262,7 +3518,14 @@ async function refreshCourseSiSo(course, activeIdDot, bodyEl) {
     activeIdDot,
     course.maHocPhan
   );
-  if (!raw) return;
+  if (raw === null) {
+    setStatusNote("⚠️ Hết phiên DKHP hoặc chưa mở tab dkhp.iuh.edu.vn", "#f87171");
+    return { ok: false, reason: "unauthenticated" };
+  }
+  if (raw && raw.serverBusy) {
+    setStatusNote(`⏳ ${raw.message || "Máy chủ bận"}`, "#fbbf24");
+    return { ok: false, reason: "serverBusy" };
+  }
 
   const freshList = Array.isArray(raw) ? raw : raw.data || raw.Data || [];
   if (freshList.length > 0) {
@@ -3278,18 +3541,25 @@ async function refreshCourseSiSo(course, activeIdDot, bodyEl) {
     saveLhpPlannerState();
     if (bodyEl && document.body.contains(bodyEl)) {
       const classesArea = bodyEl.querySelector(".lhp-open-classes-area");
-      renderOpenClassesForCourse(classesArea, course, activeIdDot, freshList, bodyEl);
+      renderOpenClassesForCourse(classesArea, course, activeIdDot, freshList, bodyEl, true);
     }
+    return { ok: true };
   }
+  setStatusNote("⚠️ Chưa có danh sách lớp mới từ DKHP", "#fbbf24");
+  return { ok: false, reason: "empty_response" };
 }
 
-function startOrUpdateSiSoAutoRefreshTimer(bodyEl, course, activeIdDot) {
+function startOrUpdateSiSoAutoRefreshTimer(bodyEl, course, activeIdDot, resetCountdown = false) {
+  const timerCourseKey = `${activeIdDot}_${course.maMonHoc || course.maHocPhan}`;
   if (_lhpSiSoRefreshIntervalId) {
     clearInterval(_lhpSiSoRefreshIntervalId);
     _lhpSiSoRefreshIntervalId = null;
   }
 
-  _lhpSiSoCountdownSec = 120;
+  if (resetCountdown || _lhpSiSoTimerCourseKey !== timerCourseKey || _lhpSiSoCountdownSec <= 0) {
+    _lhpSiSoCountdownSec = 120;
+  }
+  _lhpSiSoTimerCourseKey = timerCourseKey;
 
   _lhpSiSoRefreshIntervalId = setInterval(() => {
     if (!bodyEl || !document.body.contains(bodyEl)) {
@@ -3385,22 +3655,28 @@ function renderExpandedCourseBody(bodyEl, course, activeIdDot) {
     btnFetchClasses.addEventListener("click", async () => {
       btnFetchClasses.disabled = true;
       btnFetchClasses.textContent = "⏳ Đang tải từ DKHP...";
-      const raw = await fetchDanhSachLopHocPhan(
-        course.maMonHoc,
-        activeIdDot,
-        course.maHocPhan
-      );
-      if (raw === null) {
-        alert("Chưa đăng nhập DKHP hoặc phiên làm việc đã hết hạn.");
-        btnFetchClasses.disabled = false;
-        btnFetchClasses.textContent = "🔍 Quét Lớp mở DKHP";
-        return;
+      try {
+        const raw = await fetchDanhSachLopHocPhan(
+          course.maMonHoc,
+          activeIdDot,
+          course.maHocPhan
+        );
+        if (raw === null) {
+          alert("Chưa đăng nhập DKHP hoặc phiên làm việc đã hết hạn. Vui lòng giữ 1 tab dkhp.iuh.edu.vn đã đăng nhập.");
+          return;
+        }
+        const list = Array.isArray(raw) ? raw : raw.data || raw.Data || [];
+        _lhpOpenClassesByCourse[classCacheKey] = list;
+        _lhpLastSiSoUpdatedAt[classCacheKey] = new Date().toLocaleTimeString("vi-VN");
+        _lhpSiSoCountdownSec = 120;
+        saveLhpPlannerState();
+        renderExpandedCourseBody(bodyEl, course, activeIdDot);
+      } finally {
+        if (document.body.contains(btnFetchClasses)) {
+          btnFetchClasses.disabled = false;
+          btnFetchClasses.textContent = `🔍 ${cachedClasses ? "Quét lại từ DKHP" : "Quét Lớp mở DKHP"}`;
+        }
       }
-      const list = Array.isArray(raw) ? raw : raw.data || raw.Data || [];
-      _lhpOpenClassesByCourse[classCacheKey] = list;
-      _lhpLastSiSoUpdatedAt[classCacheKey] = new Date().toLocaleTimeString("vi-VN");
-      saveLhpPlannerState();
-      renderExpandedCourseBody(bodyEl, course, activeIdDot);
     });
   }
 
@@ -3479,7 +3755,7 @@ function renderExpandedCourseBody(bodyEl, course, activeIdDot) {
   }
 }
 
-function renderOpenClassesForCourse(container, course, activeIdDot, classes, bodyEl = null) {
+function renderOpenClassesForCourse(container, course, activeIdDot, classes, bodyEl = null, resetCountdown = false) {
   if (!container) return;
   const codeKey = course.maMonHoc || course.maHocPhan;
   const classCacheKey = `${activeIdDot}_${codeKey}`;
@@ -3527,9 +3803,9 @@ function renderOpenClassesForCourse(container, course, activeIdDot, classes, bod
       margin-bottom:8px;
       font-size:11px;
     ">
-      <div style="display:flex; align-items:center; gap:6px; color:var(--text-muted);">
+      <div style="display:flex; align-items:center; gap:6px; color:var(--text-muted); flex-wrap:wrap;">
         <span>👥 <b>${classes.length} lớp</b></span>
-        <span>&bull; Cập nhật: <b style="color:var(--text-main);">${escapeHtml(lastUpdated)}</b></span>
+        <span>&bull; Cập nhật: <b class="lhp-siso-status-note" style="color:var(--text-main);">${escapeHtml(lastUpdated)}</b></span>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; color:#60a5fa; font-weight:600;" title="Tự động quét lại sĩ số lớp mỗi 2 phút (120 giây)">
@@ -3556,12 +3832,19 @@ function renderOpenClassesForCourse(container, course, activeIdDot, classes, bod
     btnManualRefresh.addEventListener("click", async () => {
       btnManualRefresh.disabled = true;
       btnManualRefresh.textContent = "⏳...";
-      await refreshCourseSiSo(course, activeIdDot, bodyEl || container.parentElement);
+      try {
+        await refreshCourseSiSo(course, activeIdDot, bodyEl || container.parentElement);
+      } finally {
+        if (document.body.contains(btnManualRefresh)) {
+          btnManualRefresh.disabled = false;
+          btnManualRefresh.textContent = "🔄 Sĩ số";
+        }
+      }
     });
   }
 
   if (bodyEl) {
-    startOrUpdateSiSoAutoRefreshTimer(bodyEl, course, activeIdDot);
+    startOrUpdateSiSoAutoRefreshTimer(bodyEl, course, activeIdDot, resetCountdown);
   }
 
   const listWrap = container.querySelector(".lhp-classes-items-wrap");
@@ -3708,16 +3991,20 @@ function renderOpenClassesForCourse(container, course, activeIdDot, classes, bod
         btnDetail.addEventListener("click", async () => {
           btnDetail.disabled = true;
           btnDetail.textContent = "⏳ Đang tải lịch...";
-          const detailData = await fetchChiTietLopHocPhan(idEncrypted, -1);
-          if (detailData) {
-            const list =
-              detailData.ListLichHoc || (Array.isArray(detailData) ? detailData : []);
-            _lhpClassDetailCache[idEncrypted] = list;
-            saveLhpPlannerState();
-            renderOpenClassesForCourse(container, course, activeIdDot, classes, bodyEl);
-          } else {
-            btnDetail.disabled = false;
-            btnDetail.textContent = "📅 Xem GV, Giờ học & Tổ TH";
+          try {
+            const detailData = await fetchChiTietLopHocPhan(idEncrypted, -1);
+            if (detailData && !detailData.serverBusy) {
+              const list =
+                detailData.ListLichHoc || (Array.isArray(detailData) ? detailData : []);
+              _lhpClassDetailCache[idEncrypted] = list;
+              saveLhpPlannerState();
+              renderOpenClassesForCourse(container, course, activeIdDot, classes, bodyEl, false);
+            }
+          } finally {
+            if (document.body.contains(btnDetail)) {
+              btnDetail.disabled = false;
+              btnDetail.textContent = "📅 Xem GV, Giờ học & Tổ TH";
+            }
           }
         });
       }
@@ -4119,12 +4406,7 @@ async function loadLhpTab(forceRefresh = false, targetIdDot = null) {
   }
 
   if (forceRefresh) {
-    console.log(`[DKHP] forceRefresh = true: Làm mới cache chi tiết lớp học đợt ${activeIdDot}...`);
-    _lhpClassDetailCache = {};
-    chrome.storage.local.remove("iuh_lhp_class_detail_cache");
-    if (_lhpDataByDotCache[activeIdDot]) {
-      _lhpDataByDotCache[activeIdDot].schedules = [];
-    }
+    console.log(`[DKHP] forceRefresh = true: Đồng bộ lại danh sách LHP đợt ${activeIdDot} (giữ nguyên cache Clipboard)...`);
   }
 
   _isFetchingLhp = true;
@@ -4153,6 +4435,18 @@ async function loadLhpTab(forceRefresh = false, targetIdDot = null) {
       showOnly(tableSectionEl);
       refreshLhpPlannerView(activeIdDot);
       return;
+    }
+
+    if (forceRefresh) {
+      const freshDetailStored = await new Promise((resolve) =>
+        chrome.storage.local.get("iuh_lhp_class_detail_cache", resolve)
+      );
+      if (freshDetailStored?.iuh_lhp_class_detail_cache) {
+        _lhpClassDetailCache = {
+          ..._lhpClassDetailCache,
+          ...freshDetailStored.iuh_lhp_class_detail_cache,
+        };
+      }
     }
 
     _lhpDataByDotCache[activeIdDot] = bundledData;
@@ -5005,6 +5299,12 @@ function initLhpAutoRegModalControls() {
     }
   });
 
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.style.display !== "none" && modal.style.display !== "") {
+      modal.style.display = "none";
+    }
+  });
+
   const checkAll = document.getElementById("lhp-autoreg-check-all");
   if (checkAll) {
     checkAll.addEventListener("change", () => {
@@ -5051,5 +5351,131 @@ function initLhpAutoRegModalControls() {
   }
 }
 
+// =============================================================================
+// DASHBOARD SESSION HEARTBEAT MONITOR (GIỮ PHIÊN DKHP & SV.IUH.EDU.VN)
+// =============================================================================
+let _dashHeartbeatTimerId = null;
+
+function updateDashboardHeartbeatBadge(status, labelText) {
+  const badges = [
+    document.getElementById("dkhp-heartbeat-badge"),
+    document.getElementById("ctk-heartbeat-badge"),
+  ].filter(Boolean);
+  badges.forEach((badge) => {
+    badge.textContent = labelText;
+    if (status === "ok") {
+      badge.style.background = "rgba(16, 185, 129, 0.16)";
+      badge.style.color = "#34d399";
+      badge.style.borderColor = "rgba(16, 185, 129, 0.45)";
+    } else if (status === "warn") {
+      badge.style.background = "rgba(245, 158, 11, 0.16)";
+      badge.style.color = "#fbbf24";
+      badge.style.borderColor = "rgba(245, 158, 11, 0.45)";
+    } else {
+      badge.style.background = "rgba(239, 68, 68, 0.16)";
+      badge.style.color = "#f87171";
+      badge.style.borderColor = "rgba(239, 68, 68, 0.45)";
+    }
+  });
+}
+
+async function pingDashboardSessionHeartbeats(force = false) {
+  if (_autoRegIsRunning || _isFetchingLhp || _dkhpBlocked) return;
+
+  const dkhpTabs = await findDkhpTabsOrdered();
+  let dkhpAlive = false;
+  let dkhpExpired = false;
+
+  for (const tab of dkhpTabs) {
+    if (!tab.id) continue;
+    const resp = await new Promise((resolve) => {
+      try {
+        chrome.tabs.sendMessage(
+          tab.id,
+          { action: "dkhpHeartbeatPing", force },
+          (r) => {
+            if (chrome.runtime.lastError || !r) resolve(null);
+            else resolve(r);
+          }
+        );
+      } catch (_) {
+        resolve(null);
+      }
+    });
+    if (resp && resp.ok) {
+      dkhpAlive = true;
+      break;
+    }
+    if (resp && resp.unauthenticated) {
+      dkhpExpired = true;
+    }
+  }
+
+  // Ping thêm các tab sv.iuh.edu.vn đang mở (nếu có)
+  try {
+    const svTabs = await new Promise((resolve) => {
+      chrome.tabs.query({ url: "*://sv.iuh.edu.vn/*" }, (t) => resolve(t || []));
+    });
+    for (const tab of svTabs) {
+      if (!tab.id) continue;
+      chrome.tabs.sendMessage(tab.id, { action: "svHeartbeatPing", force }, () => {
+        const ignore = chrome.runtime.lastError;
+      });
+    }
+  } catch (_) {}
+
+  const timeStr = new Date().toLocaleTimeString("vi-VN", { hour12: false });
+  if (dkhpAlive) {
+    updateDashboardHeartbeatBadge("ok", `💓 DKHP: Sống (${timeStr})`);
+  } else if (dkhpExpired) {
+    updateDashboardHeartbeatBadge("err", "💔 DKHP: Cần đăng nhập lại");
+  } else if (dkhpTabs.length === 0) {
+    updateDashboardHeartbeatBadge("warn", "⚠️ Chưa mở tab DKHP");
+  } else {
+    updateDashboardHeartbeatBadge("warn", "⚠️ Tab DKHP cần F5 lại");
+  }
+}
+
+function initDashboardSessionHeartbeat() {
+  if (_dashHeartbeatTimerId) return;
+
+  const bindBadgeClick = (id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener("click", () => {
+        el.textContent = "💓 Đang ping giữ phiên...";
+        pingDashboardSessionHeartbeats(true);
+      });
+    }
+  };
+  bindBadgeClick("dkhp-heartbeat-badge");
+  bindBadgeClick("ctk-heartbeat-badge");
+
+  chrome.storage.local.get("iuh_dkhp_last_heartbeat", (res) => {
+    const ts = res?.iuh_dkhp_last_heartbeat;
+    if (ts && Date.now() - ts < 5 * 60 * 1000) {
+      const tStr = new Date(ts).toLocaleTimeString("vi-VN", { hour12: false });
+      updateDashboardHeartbeatBadge("ok", `💓 DKHP: Sống (${tStr})`);
+    }
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.iuh_dkhp_last_heartbeat?.newValue) {
+      const tStr = new Date(changes.iuh_dkhp_last_heartbeat.newValue).toLocaleTimeString("vi-VN", { hour12: false });
+      updateDashboardHeartbeatBadge("ok", `💓 DKHP: Sống (${tStr})`);
+    }
+  });
+
+  _dashHeartbeatTimerId = setInterval(() => {
+    pingDashboardSessionHeartbeats(false);
+  }, 3 * 60 * 1000);
+  setTimeout(() => pingDashboardSessionHeartbeats(false), 1500);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initDashboardSessionHeartbeat);
+} else {
+  initDashboardSessionHeartbeat();
+}
 
 

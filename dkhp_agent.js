@@ -1170,6 +1170,25 @@
         _agentAutoPickOpenClass = !!e.target.checked;
       });
 
+    const sniperSecEl = panel.querySelector("#iuh-agent-sniper-sec");
+    if (sniperSecEl) {
+      const syncSniperSec = () => {
+        const val = parseInt(sniperSecEl.value, 10);
+        if (!isNaN(val) && val > 0) {
+          _agentSniperIntervalSec = Math.max(AGENT_SNIPER_MIN_SEC, val);
+        }
+      };
+      sniperSecEl.addEventListener("input", syncSniperSec);
+      sniperSecEl.addEventListener("change", () => {
+        const val = parseInt(sniperSecEl.value, 10);
+        _agentSniperIntervalSec = Math.max(
+          AGENT_SNIPER_MIN_SEC,
+          val || AGENT_SNIPER_MIN_SEC
+        );
+        sniperSecEl.value = String(_agentSniperIntervalSec);
+      });
+    }
+
     panel
       .querySelector("#iuh-agent-btn-fast")
       ?.addEventListener("click", () => runBatchDirectAjax(false));
@@ -1251,7 +1270,11 @@
     if (rows.length > 0) {
       chrome.storage.local.get("iuh_lhp_data_by_dot", (r) => {
         const cached = r?.iuh_lhp_data_by_dot || {};
-        const dot = _agentSelectedDot || "65";
+        const ddkEl = document.getElementById("ddk");
+        const dot =
+          (ddkEl && ddkEl.value ? String(ddkEl.value).trim() : "") ||
+          _agentSelectedDot ||
+          "65";
         cached[dot] = cached[dot] || { idDot: String(dot), rows: [], schedules: [] };
         rows.forEach((newR) => {
           const exIdx = cached[dot].rows.findIndex(
@@ -1364,79 +1387,116 @@
     return result;
   }
 
-  async function agentSyncFullLhp(idDot, forceRefresh = false) {
-    let rows = scrapeLopDaDK();
+  function getSelectedDotFromDom() {
+    const ddkEl = document.getElementById("ddk");
+    return ddkEl && ddkEl.value ? String(ddkEl.value).trim() : "";
+  }
 
-    // Nếu không có bảng #lopDaDK trên DOM (đang ở ThongTinPortal / Hồ sơ sinh viên):
-    // Gửi GET /DangKyHocPhan trong context tab (first-party, cookies đính kèm tự nhiên)
-    if (!rows || rows.length === 0) {
-      try {
-        const res = await fetch("/DangKyHocPhan", {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          },
-        });
-        if (res.ok) {
-          const html = await res.text();
-          if (html.includes("lopDaDK")) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, "text/html");
-            const table = doc.getElementById("lopDaDK");
-            if (table) {
-              const trs = table.querySelectorAll("tbody tr");
-              const bgRows = [];
-              trs.forEach((tr) => {
-                const tds = tr.querySelectorAll("td");
-                if (tds.length < 3) return;
-                const xemMatch = tr.innerHTML.match(/XemLichHoc\s*\(\s*['"]([^'"]+)['"]\s*,\s*(\d+)\s*\)/i);
-                const idEncrypted = xemMatch ? xemMatch[1] : "";
-                const nhomFromXem = xemMatch ? parseInt(xemMatch[2], 10) : 0;
-                let maLHP = tds[2] ? tds[2].textContent.trim() : "";
-                let tenMon = tds[3] ? tds[3].textContent.trim() : "";
-                let lopDuKien = tds[4] ? tds[4].textContent.trim() : "";
-                let soTC = tds[5] ? parseInt(tds[5].textContent.trim(), 10) || 0 : 0;
-                let maNhomTH = tds[6] && tds[6].textContent.trim() ? parseInt(tds[6].textContent.trim(), 10) || 0 : nhomFromXem;
-                let hocPhi = tds[7] ? parseInt(tds[7].textContent.replace(/[,.]/g, "").trim(), 10) || 0 : 0;
-                let trangThaiDK = tds[10] ? tds[10].textContent.trim() : "";
-                let ngayDK = tds[11] ? tds[11].textContent.trim() : "";
-                let trangThaiLHP = tds[12] ? tds[12].textContent.trim() : "Đã đăng ký";
-
-                if (maLHP || tenMon) {
-                  bgRows.push({
-                    IdLopHocPhanString: idEncrypted,
-                    IDLopHocPhanEncrypted: idEncrypted,
-                    MaLopHocPhan: maLHP,
-                    MaLHP: maLHP,
-                    TenMonHoc: tenMon,
-                    LopDuKien: lopDuKien,
-                    SoTinChi: soTC || 3,
-                    MaNhomThucHanh: maNhomTH,
-                    HocPhi: hocPhi,
-                    TrangThaiDK: trangThaiDK,
-                    NgayDangKy: ngayDK,
-                    TrangThaiLopHocPhan: trangThaiLHP || "Đã đăng ký",
-                  });
-                }
-              });
-              if (bgRows.length > 0) rows = bgRows;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("[DKHP Agent] Lỗi fetch /DangKyHocPhan ngầm từ tab:", err);
+  function formatDotNetDate(raw) {
+    if (!raw) return "";
+    const str = String(raw).trim();
+    const m = str.match(/\/Date\((\d+)\)\//);
+    if (m) {
+      const d = new Date(parseInt(m[1], 10));
+      if (!isNaN(d.getTime())) {
+        const dd = String(d.getDate()).padStart(2, "0");
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const yyyy = d.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
       }
+    }
+    return str;
+  }
+
+  function mapApiRegisteredRows(apiList) {
+    if (!Array.isArray(apiList)) return [];
+    return apiList
+      .filter((item) => item && (item.MaLopHocPhan || item.TenMonHoc || item.IdLopHocPhanString))
+      .map((item) => {
+        const maLHP = String(item.MaLopHocPhan || item.MaLHP || "").trim();
+        const maHP = String(
+          item.MaHocPhan || (maLHP.length >= 10 ? maLHP.substring(0, 10) : "")
+        ).trim();
+        const idEnc = String(
+          item.IdLopHocPhanString || item.IDLopHocPhanEncrypted || ""
+        ).trim();
+        return {
+          IdLopHocPhanString: idEnc,
+          IDLopHocPhanEncrypted: idEnc,
+          IDDangKyHocPhan: item.IDDangKyHocPhan || 0,
+          MaLopHocPhan: maLHP,
+          MaLHP: maLHP,
+          MaHocPhan: maHP,
+          TenMonHoc: String(item.TenMonHoc || "").trim(),
+          LopDuKien: String(item.LopDuKien || "").trim(),
+          SoTinChi: Number(item.SoTinChi || 0) || 3,
+          MaNhomThucHanh:
+            item.MaNhomThucHanh != null ? Number(item.MaNhomThucHanh) || 0 : 0,
+          HocPhi: Number(item.HocPhi || 0) || 0,
+          TrangThaiDK: String(
+            item.TrangThaiDangKy || item.TrangThaiDK || item.TenNguonDangKy || ""
+          ).trim(),
+          NgayDangKy: formatDotNetDate(item.NgayDangKy),
+          TrangThaiLopHocPhan: String(
+            item.TrangThaiLopHocPhan || item.TrangThai || "Đã đăng ký"
+          ).trim(),
+        };
+      });
+  }
+
+  async function agentSyncFullLhp(idDot, forceRefresh = false) {
+    const domDot = getSelectedDotFromDom();
+    const targetDot = Number(idDot || domDot || _agentSelectedDot || 65);
+    const dotKey = String(targetDot);
+
+    // 1. Ưu tiên gọi API AJAX chuẩn của trang trường: POST /DangKyHocPhan/GetDanhSachLopHocPhanDaDangKy
+    // Hoạt động đúng ở mọi trang thuộc dkhp.iuh.edu.vn (kể cả ThongTinPortal) và đúng cho mọi idDot
+    let rows = null;
+    try {
+      const apiData = await dkhpFormPost(
+        "/DangKyHocPhan/GetDanhSachLopHocPhanDaDangKy",
+        { idDot: targetDot },
+        15000
+      );
+      if (Array.isArray(apiData)) {
+        rows = mapApiRegisteredRows(apiData);
+      }
+    } catch (err) {
+      console.warn("[DKHP Agent] Lỗi gọi GetDanhSachLopHocPhanDaDangKy:", err);
+    }
+
+    // 2. Fallback sang bóc tách bảng #lopDaDK trên DOM nếu API không trả mảng và DOM khớp idDot
+    if (rows === null && (!domDot || dotKey === domDot)) {
+      rows = scrapeLopDaDK();
     }
 
     if (!Array.isArray(rows) || rows.length === 0) {
-      return { rows: [], schedules: [], fetchedAt: Date.now() };
+      if (Array.isArray(rows)) {
+        const emptyStorage = await new Promise((r) =>
+          chrome.storage.local.get("iuh_lhp_data_by_dot", r)
+        );
+        const cachedByDot = emptyStorage?.iuh_lhp_data_by_dot || {};
+        cachedByDot[dotKey] = {
+          idDot: dotKey,
+          rows: [],
+          schedules: [],
+          fetchedAt: Date.now(),
+        };
+        chrome.storage.local.set({
+          iuh_lhp_data_by_dot: cachedByDot,
+          iuh_lhp_data: [],
+        });
+        return { rows: [], schedules: [], emptyConfirmed: true, fetchedAt: Date.now() };
+      }
+      return { rows: [], schedules: [], syncFailed: true, fetchedAt: Date.now() };
     }
 
     const storageData = await new Promise((r) =>
       chrome.storage.local.get(["iuh_lhp_class_detail_cache", "iuh_lhp_data_by_dot"], r)
     );
-    let classDetailCache = forceRefresh ? {} : (storageData?.iuh_lhp_class_detail_cache || {});
+    // Giữ nguyên cache các lớp khác (đặc biệt lớp mở trong Clipboard), chỉ làm mới lịch của các lớp thuộc đợt đang sync khi forceRefresh = true
+    const existingDetailCache = storageData?.iuh_lhp_class_detail_cache || {};
+    const classDetailCache = { ...existingDetailCache };
 
     const LHP_COLORS = [
       "#3B82F6", "#EF4444", "#10B981", "#F59E0B", "#8B5CF6",
@@ -1452,21 +1512,25 @@
       const tenMon = row.TenMonHoc || "(Không tên)";
       const maLHP = row.MaLopHocPhan || row.MaLHP || "";
 
-      let rawSchedList = classDetailCache[idEncrypted];
+      let rawSchedList = forceRefresh ? null : classDetailCache[idEncrypted];
       if (!rawSchedList && idEncrypted) {
-        await new Promise((r) => setTimeout(r, 150));
         try {
-          const detailRes = await fetch("/DangKyHocPhan/GetChiTietLopHocPhan", {
-            method: "POST",
-            credentials: "include",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-              "X-Requested-With": "XMLHttpRequest",
-            },
-            body: `idLopHocPhan=${encodeURIComponent(idEncrypted)}&maNhomTH=${encodeURIComponent(maNhomTH)}`,
-          });
-          if (detailRes.ok) {
-            const detailText = await detailRes.text();
+          const { res: detailRes, text: detailText } = await agentEnqueue(() =>
+            fetchWithTimeout(
+              "/DangKyHocPhan/GetChiTietLopHocPhan",
+              {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                  "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                  "X-Requested-With": "XMLHttpRequest",
+                },
+                body: `idLopHocPhan=${encodeURIComponent(idEncrypted)}&maNhomTH=${encodeURIComponent(maNhomTH)}`,
+              },
+              15000
+            )
+          );
+          if (detailRes && detailRes.ok && detailText) {
             if (!detailText.includes("<!DOCTYPE") && !detailText.includes("frmLogin")) {
               const parsed = JSON.parse(detailText);
               rawSchedList = parsed?.ListLichHoc || (Array.isArray(parsed) ? parsed : []);
@@ -1475,6 +1539,9 @@
           }
         } catch (e) {
           console.warn("[DKHP Agent] Lỗi tải chi tiết lớp:", tenMon, e);
+        }
+        if (!rawSchedList && existingDetailCache[idEncrypted]) {
+          rawSchedList = existingDetailCache[idEncrypted];
         }
       }
 
@@ -1494,7 +1561,6 @@
       }
     }
 
-    const dotKey = String(idDot || _agentSelectedDot || "65");
     const cachedByDot = storageData?.iuh_lhp_data_by_dot || {};
     cachedByDot[dotKey] = {
       idDot: dotKey,
@@ -1541,28 +1607,99 @@
       obs.observe(lopDaDkEl, { childList: true, subtree: true });
     }
 
-    // Giữ session ASP.NET không bị timeout sau 20 phút (chạy trong context tab đầu chủ, an toàn 100%)
-    setInterval(async () => {
-      try {
-        if (document.visibilityState !== "visible") return;
-        await fetch("/DangKyHocPhan/CheckKhacDiaDiemPhongBuoiHoc", {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          body: "idLopHocPhan=&nhomThucHanh=",
-        });
-        console.log("[DKHP Agent Keep-Alive] Đã làm mới session ngầm thành công.");
-      } catch (_) {}
-    }, 8 * 60 * 1000);
+    // Kiểm tra xem trang hiện tại đã có form đăng nhập (tức chưa đăng nhập / hết phiên)
+    function isAgentOnLoginPage() {
+      const p = window.location.pathname.toLowerCase();
+      return (
+        p.includes("dang-nhap") ||
+        p.includes("login") ||
+        Boolean(document.getElementById("frmLogin") || document.getElementById("UserName"))
+      );
+    }
 
-    // Lắng nghe yêu cầu lấy dữ liệu từ Dashboard
+    function getAntiForgeryToken() {
+      const inp = document.querySelector('input[name="__RequestVerificationToken"]');
+      return inp ? String(inp.value || "").trim() : "";
+    }
+
+    async function runDkhpHeartbeatPing(force = false) {
+      if (isAgentOnLoginPage()) {
+        return { ok: false, unauthenticated: true, ts: Date.now() };
+      }
+      const now = Date.now();
+      // Nếu vừa có request hợp lệ tới DKHP trong 90s gần nhất thì ASP.NET sliding expiration đã được gia hạn
+      if (!force && _agentLastRequestAt > 0 && now - _agentLastRequestAt < 90 * 1000) {
+        chrome.storage.local.set({ iuh_dkhp_last_heartbeat: now });
+        return { ok: true, skipped: true, ts: now };
+      }
+      try {
+        const { res, text } = await agentEnqueue(() => {
+          const token = getAntiForgeryToken();
+          const hbBody = token
+            ? `__RequestVerificationToken=${encodeURIComponent(token)}`
+            : "";
+          return fetchWithTimeout(
+            "/DangKyHocPhan/CheckHanCheDangKy",
+            {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest",
+              },
+              body: hbBody,
+            },
+            10000
+          );
+        });
+        const expired =
+          !res ||
+          !res.ok ||
+          res.status === 401 ||
+          (res.url && /dang-nhap|login/i.test(res.url)) ||
+          text.includes("<!DOCTYPE") ||
+          text.includes("<html") ||
+          text.includes("frmLogin") ||
+          text.includes('id="UserName"');
+        if (expired) {
+          return { ok: false, unauthenticated: true, ts: Date.now() };
+        }
+        const pingTs = Date.now();
+        chrome.storage.local.set({ iuh_dkhp_last_heartbeat: pingTs });
+        console.log("[DKHP Agent Keep-Alive] Heartbeat thành công lúc", new Date(pingTs).toLocaleTimeString("vi-VN"));
+        return { ok: true, ts: pingTs };
+      } catch (err) {
+        return { ok: false, error: String(err), ts: Date.now() };
+      }
+    }
+
+    // Giữ session ASP.NET không bị timeout sau 20 phút (chạy ngay cả khi tab DKHP đang nằm ở background)
+    setInterval(() => {
+      runDkhpHeartbeatPing(false);
+    }, 3.5 * 60 * 1000);
+    runDkhpHeartbeatPing(false);
+
+    // Lắng nghe yêu cầu lấy dữ liệu & First-Party Proxy từ Dashboard / Background
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.action === "getLopDaDK") {
-        const rows = scrapeLopDaDK();
-        sendResponse({ ok: true, rows });
+        (async () => {
+          const domDot = getSelectedDotFromDom();
+          const reqDot = request.idDot != null ? String(request.idDot).trim() : "";
+          const targetDot = Number(reqDot || domDot || _agentSelectedDot || 65);
+          try {
+            const apiData = await dkhpFormPost(
+              "/DangKyHocPhan/GetDanhSachLopHocPhanDaDangKy",
+              { idDot: targetDot },
+              15000
+            );
+            if (Array.isArray(apiData)) {
+              sendResponse({ ok: true, rows: mapApiRegisteredRows(apiData) });
+              return;
+            }
+          } catch (_) {}
+          const rows = !reqDot || !domDot || reqDot === domDot ? scrapeLopDaDK() : [];
+          sendResponse({ ok: true, rows });
+        })();
         return true;
       }
       if (request.action === "syncFullLhp") {
@@ -1573,6 +1710,93 @@
           } catch (err) {
             sendResponse({ ok: false, error: String(err) });
           }
+        })();
+        return true;
+      }
+      if (request.action === "dkhpProxyFetch") {
+        (async () => {
+          if (isAgentOnLoginPage()) {
+            sendResponse({ ok: false, status: 401, url: window.location.href, text: "frmLogin", unauthenticated: true });
+            return;
+          }
+          try {
+            const rawPath = String(request.path || "");
+            const safePath = rawPath.startsWith("https://dkhp.iuh.edu.vn")
+              ? rawPath.replace("https://dkhp.iuh.edu.vn", "")
+              : rawPath.startsWith("/")
+              ? rawPath
+              : "/" + rawPath;
+            const method = (request.method || "POST").toUpperCase();
+            const reqHeaders = { ...(request.headers || {}) };
+            let reqBody = request.body !== undefined ? String(request.body) : undefined;
+            if (method === "POST") {
+              if (!reqHeaders["Content-Type"]) {
+                reqHeaders["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
+              }
+              if (!reqHeaders["X-Requested-With"]) {
+                reqHeaders["X-Requested-With"] = "XMLHttpRequest";
+              }
+              const token = getAntiForgeryToken();
+              if (token && (!reqBody || !reqBody.includes("__RequestVerificationToken="))) {
+                reqBody = reqBody
+                  ? `${reqBody}&__RequestVerificationToken=${encodeURIComponent(token)}`
+                  : `__RequestVerificationToken=${encodeURIComponent(token)}`;
+              }
+            }
+            const timeoutMs = Number(request.timeoutMs) || 15000;
+            const { res, text } = await agentEnqueue(() =>
+              fetchWithTimeout(
+                safePath,
+                {
+                  method,
+                  credentials: "include",
+                  headers: reqHeaders,
+                  body: method === "GET" || method === "HEAD" ? undefined : reqBody,
+                },
+                timeoutMs
+              )
+            );
+            const isAuthRedirect = Boolean(
+              res && res.url && /dang-nhap|login/i.test(res.url)
+            );
+            const isHtmlLogin =
+              text &&
+              (text.includes("frmLogin") ||
+                text.includes('id="UserName"') ||
+                (/^\s*<!DOCTYPE|^\s*<html/i.test(text) && text.toLowerCase().includes("đăng nhập")));
+            if (isAuthRedirect || isHtmlLogin) {
+              sendResponse({
+                ok: false,
+                status: 401,
+                statusText: "Unauthorized",
+                contentType: res ? res.headers.get("content-type") || "" : "",
+                url: res ? res.url || "" : "",
+                text: text || "frmLogin",
+                unauthenticated: true,
+              });
+              return;
+            }
+            if (res && res.ok) {
+              chrome.storage.local.set({ iuh_dkhp_last_heartbeat: Date.now() });
+            }
+            sendResponse({
+              ok: Boolean(res && res.ok),
+              status: res ? res.status : 0,
+              statusText: res ? res.statusText : "",
+              contentType: res ? res.headers.get("content-type") || "" : "",
+              url: res ? res.url || "" : "",
+              text: text || "",
+            });
+          } catch (err) {
+            sendResponse({ ok: false, status: 0, error: String(err), text: "" });
+          }
+        })();
+        return true;
+      }
+      if (request.action === "dkhpHeartbeatPing" || request.action === "heartbeatPing") {
+        (async () => {
+          const result = await runDkhpHeartbeatPing(Boolean(request.force));
+          sendResponse(result);
         })();
         return true;
       }

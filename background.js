@@ -6,56 +6,32 @@ let isSyncTabSpawning = false; // Cờ khóa chống mở nhiều tab cùng lúc
 let syncWatchdogTimer = null;
 
 // ==============================================================================
-// 0. THIẾT LẬP HEADER ORIGIN/REFERER CHO REQUEST TỪ EXTENSION & DỌN DẸP RÁC
+// 0. DỌN DẸP RÁC (ORPHANED STATES) & ĐẢM BẢO HEARTBEAT ALARM
 // ==============================================================================
+// Ghi chú: rules.json tĩnh (manifest.json -> declarative_net_request) đã xử lý
+// Origin/Referer cho extension XHR, nên không cần đăng ký dynamic rules trùng lặp.
 async function ensureDkhpHeaderRules() {
   if (!chrome.declarativeNetRequest || !chrome.declarativeNetRequest.updateDynamicRules) {
     return;
   }
   try {
+    // Xóa các dynamic rules cũ (9001, 9002) nếu tồn tại để tránh trùng với rules.json
     await chrome.declarativeNetRequest.updateDynamicRules({
       removeRuleIds: [9001, 9002],
-      addRules: [
-        {
-          id: 9001,
-          priority: 1,
-          action: {
-            type: "modifyHeaders",
-            requestHeaders: [
-              { header: "Origin", operation: "set", value: "https://dkhp.iuh.edu.vn" },
-              { header: "Referer", operation: "set", value: "https://dkhp.iuh.edu.vn/DangKyHocPhan" },
-            ],
-          },
-          condition: {
-            urlFilter: "||dkhp.iuh.edu.vn/",
-            initiatorDomains: [chrome.runtime.id],
-            resourceTypes: ["xmlhttprequest"],
-          },
-        },
-        {
-          id: 9002,
-          priority: 1,
-          action: {
-            type: "modifyHeaders",
-            requestHeaders: [
-              { header: "Origin", operation: "set", value: "https://sv.iuh.edu.vn" },
-              { header: "Referer", operation: "set", value: "https://sv.iuh.edu.vn/dashboard.html" },
-            ],
-          },
-          condition: {
-            urlFilter: "||sv.iuh.edu.vn/",
-            initiatorDomains: [chrome.runtime.id],
-            resourceTypes: ["xmlhttprequest"],
-          },
-        },
-      ],
     });
   } catch (err) {
-    console.warn("[IUH Background] Không thể đăng ký DNR header rules:", err);
+    console.warn("[IUH Background] Không thể dọn dẹp DNR dynamic rules cũ:", err);
   }
 }
 
 ensureDkhpHeaderRules();
+
+// Đảm bảo alarm Heartbeat luôn tồn tại ngay cả khi service worker thức dậy sau khi ngủ đông
+chrome.alarms.get("iuhSessionHeartbeat", (existing) => {
+  if (!existing) {
+    chrome.alarms.create("iuhSessionHeartbeat", { periodInMinutes: 3 });
+  }
+});
 
 // Hàm dùng chung để dọn dẹp state tồn đọng từ phiên trước
 function clearZombieStates() {
@@ -98,8 +74,10 @@ chrome.runtime.onInstalled.addListener(() => {
   ensureDkhpHeaderRules();
   // Cứ mỗi 60 phút hệ thống sẽ thức dậy kiểm tra 1 lần xem đã quá 7 ngày chưa
   chrome.alarms.create("weeklyClientSyncCheck", { periodInMinutes: 60 });
+  // Giữ phiên (Heartbeat) định kỳ mỗi 3 phút qua Alarm để chống Chrome throttle background tab
+  chrome.alarms.create("iuhSessionHeartbeat", { periodInMinutes: 3 });
   console.log(
-    "[IUH Background] ⏱️ Đã khởi tạo bộ hẹn giờ tự động đồng bộ lịch.",
+    "[IUH Background] ⏱️ Đã khởi tạo bộ hẹn giờ tự động đồng bộ lịch & Heartbeat giữ phiên.",
   );
   clearZombieStates();
 });
@@ -112,15 +90,34 @@ chrome.runtime.onStartup.addListener(() => {
       chrome.alarms.create("weeklyClientSyncCheck", { periodInMinutes: 60 });
     }
   });
+  chrome.alarms.get("iuhSessionHeartbeat", (existing) => {
+    if (!existing) {
+      chrome.alarms.create("iuhSessionHeartbeat", { periodInMinutes: 3 });
+    }
+  });
   clearZombieStates();
 });
 
 // ==============================================================================
-// 1. HỆ THỐNG HẸN GIỜ (ALARM) TỰ ĐỘNG CHẠY NGẦM ĐỊNH KỲ (LỊCH HỌC)
+// 1. HỆ THỐNG HẸN GIỜ (ALARM) TỰ ĐỘNG CHẠY NGẦM ĐỊNH KỲ (LỊCH HỌC & HEARTBEAT)
 // ==============================================================================
+function runBackgroundSessionHeartbeat() {
+  chrome.tabs.query({ url: ["*://dkhp.iuh.edu.vn/*", "*://sv.iuh.edu.vn/*"] }, (tabs) => {
+    if (!Array.isArray(tabs) || tabs.length === 0) return;
+    tabs.forEach((tab) => {
+      if (!tab || !tab.id) return;
+      chrome.tabs.sendMessage(tab.id, { action: "heartbeatPing", force: false }, () => {
+        const ignoreErr = chrome.runtime.lastError;
+      });
+    });
+  });
+}
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "weeklyClientSyncCheck") {
     executePeriodicSync();
+  } else if (alarm.name === "iuhSessionHeartbeat") {
+    runBackgroundSessionHeartbeat();
   }
 });
 

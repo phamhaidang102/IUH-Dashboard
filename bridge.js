@@ -122,4 +122,49 @@
   document.addEventListener("IuhManualSyncComplete", () => {
     chrome.runtime.sendMessage({ action: "manualSyncComplete" });
   });
+
+  // 4. Heartbeat giữ phiên sv.iuh.edu.vn (tránh out session sau ~20 phút idle, kể cả khi tab ẩn)
+  let lastSvHeartbeatAt = 0;
+  function isSvLoginPage() {
+    const p = window.location.pathname.toLowerCase();
+    return (
+      p.includes("dang-nhap") ||
+      p.includes("login") ||
+      Boolean(document.getElementById("frmLogin") || document.getElementById("UserName"))
+    );
+  }
+
+  async function runSvHeartbeatPing(force = false) {
+    if (isSvLoginPage()) return { ok: false, unauthenticated: true };
+    const now = Date.now();
+    if (!force && lastSvHeartbeatAt > 0 && now - lastSvHeartbeatAt < 2 * 60 * 1000) {
+      return { ok: true, skipped: true, ts: lastSvHeartbeatAt };
+    }
+    try {
+      const res = await fetch("/dashboard.html", {
+        method: "HEAD",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (res && res.ok && !/dang-nhap|login/i.test(res.url || "")) {
+        lastSvHeartbeatAt = Date.now();
+        chrome.storage.local.set({ iuh_sv_last_heartbeat: lastSvHeartbeatAt });
+        return { ok: true, ts: lastSvHeartbeatAt };
+      }
+      return { ok: false, unauthenticated: true };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  }
+
+  setInterval(() => {
+    runSvHeartbeatPing(false);
+  }, 4 * 60 * 1000);
+
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request && (request.action === "svHeartbeatPing" || request.action === "heartbeatPing")) {
+      runSvHeartbeatPing(Boolean(request.force)).then((r) => sendResponse(r));
+      return true;
+    }
+  });
 })();

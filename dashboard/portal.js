@@ -437,13 +437,23 @@ window.pushPlannedCoursesToGradeSimulator = function (
   regRows.forEach((r) => {
     const code = String(r.MaLopHocPhan || r.MaLHP || "").trim();
     const maMH = String(r.MaMonHoc || "").trim();
+    const maHP10 = String(
+      r.MaHocPhan || (code.length >= 10 ? code.substring(0, 10) : "")
+    ).trim();
     if (code) regSubjectKeys.add(code);
     if (maMH) regSubjectKeys.add(maMH);
+    if (maHP10) regSubjectKeys.add(maHP10);
     if (code.length >= 10) regSubjectKeys.add(code.substring(0, 10));
     if (code.length >= 10) regSubjectKeys.add(code.substring(4, 10));
     const soTC = parseInt(r.SoTinChi || r.SoTC || r.DVHT || 0, 10) || 0;
     const hasTH = r.MaNhomThucHanh != null && Number(r.MaNhomThucHanh) > 0;
-    addSubject(code, r.TenMonHoc, soTC, hasTH && soTC > 1, hasTH && soTC === 1);
+    addSubject(
+      maHP10 || code || maMH,
+      r.TenMonHoc,
+      soTC,
+      hasTH && soTC > 1,
+      hasTH && soTC === 1
+    );
   });
 
   // 2. Thêm các môn Dự kiến (plannedList) CHƯA có trong danh sách chính thức
@@ -458,10 +468,12 @@ window.pushPlannedCoursesToGradeSimulator = function (
     ) {
       return; // Bỏ qua môn đã có trong danh sách chính thức để tránh nhân đôi tín chỉ
     }
+    const pSimCode =
+      pMaHP || (pCode.length >= 10 ? pCode.substring(0, 10) : pCode || pMaMH);
     const tcLT = Number(p.tcLT ?? p.soTC ?? 0);
     const tcTH = Number(p.tcTH ?? 0);
     addSubject(
-      pCode,
+      pSimCode,
       p.tenMonHoc,
       p.soTC,
       tcLT > 0 && tcTH > 0,
@@ -777,6 +789,7 @@ function loadSettingsToForm() {
       "iuhPass",
       "autoFillInfo",
       "autoClickLogin",
+      "customColors",
       "calendarColorDirect",
       "calendarColorOnline",
       "calendarColorPractice",
@@ -791,26 +804,39 @@ function loadSettingsToForm() {
       if (chkAutoLogin) chkAutoLogin.checked = result.autoClickLogin !== false;
 
       const isValidHex = (hex) => /^#[0-9a-fA-F]{6}$/.test(hex);
-      const getHex = (val, fallback) =>
-        val && isValidHex(val) ? val : fallback;
+      const getHex = (val, altVal, fallback) =>
+        val && isValidHex(val)
+          ? val
+          : altVal && isValidHex(altVal)
+          ? altVal
+          : fallback;
 
+      const custom = result.customColors || {};
       const hexDirect = getHex(
         result.calendarColorDirect,
+        custom["ly-thuyet"],
         GOOGLE_COLORS["ly-thuyet"],
       );
       const hexOnline = getHex(
         result.calendarColorOnline,
+        custom["truc-tuyen"],
         GOOGLE_COLORS["truc-tuyen"],
       );
       const hexPractice = getHex(
         result.calendarColorPractice,
+        custom["thuc-hanh"],
         GOOGLE_COLORS["thuc-hanh"],
       );
       const hexPostponed = getHex(
         result.calendarColorPostponed,
+        custom["tam-ngung"],
         GOOGLE_COLORS["tam-ngung"],
       );
-      const hexExam = getHex(result.calendarColorExam, GOOGLE_COLORS["thi"]);
+      const hexExam = getHex(
+        result.calendarColorExam,
+        custom["thi"],
+        GOOGLE_COLORS["thi"],
+      );
 
       updatePortalColorTrigger("setting-color-direct", hexDirect);
       updatePortalColorTrigger("setting-color-online", hexOnline);
@@ -838,29 +864,30 @@ function saveSettingsFromForm() {
     return hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : fallback;
   };
 
+  const hexDirect = getColorHex("setting-color-direct", GOOGLE_COLORS["ly-thuyet"]);
+  const hexOnline = getColorHex("setting-color-online", GOOGLE_COLORS["truc-tuyen"]);
+  const hexPractice = getColorHex("setting-color-practice", GOOGLE_COLORS["thuc-hanh"]);
+  const hexPostponed = getColorHex("setting-color-postponed", GOOGLE_COLORS["tam-ngung"]);
+  const hexExam = getColorHex("setting-color-exam", GOOGLE_COLORS["thi"]);
+
   const dataToSave = {
     webAppUrl: txtWebApp.value.trim(),
     iuhUser: txtUser.value.trim(),
     iuhPass: txtPass.value,
     autoFillInfo: chkAutoFill.checked,
     autoClickLogin: chkAutoLogin.checked,
-    calendarColorDirect: getColorHex(
-      "setting-color-direct",
-      GOOGLE_COLORS["ly-thuyet"],
-    ),
-    calendarColorOnline: getColorHex(
-      "setting-color-online",
-      GOOGLE_COLORS["truc-tuyen"],
-    ),
-    calendarColorPractice: getColorHex(
-      "setting-color-practice",
-      GOOGLE_COLORS["thuc-hanh"],
-    ),
-    calendarColorPostponed: getColorHex(
-      "setting-color-postponed",
-      GOOGLE_COLORS["tam-ngung"],
-    ),
-    calendarColorExam: getColorHex("setting-color-exam", GOOGLE_COLORS["thi"]),
+    calendarColorDirect: hexDirect,
+    calendarColorOnline: hexOnline,
+    calendarColorPractice: hexPractice,
+    calendarColorPostponed: hexPostponed,
+    calendarColorExam: hexExam,
+    customColors: {
+      "ly-thuyet": hexDirect,
+      "thuc-hanh": hexPractice,
+      "truc-tuyen": hexOnline,
+      thi: hexExam,
+      "tam-ngung": hexPostponed,
+    },
   };
 
   chrome.storage.sync.set(dataToSave, () => {
@@ -905,17 +932,32 @@ function initSurveyWidget() {
     );
   }
 
+  const ALL_SIDEBAR_NAV_IDS = [
+    "nav-grades",
+    "nav-schedule",
+    "nav-survey",
+    "nav-settings",
+    "nav-ctk",
+    "nav-lhp",
+  ];
+  const getCurrentContentNav = () =>
+    ["nav-grades", "nav-settings", "nav-ctk", "nav-lhp"]
+      .map((id) => $(id))
+      .find((el) => el && el.classList.contains("active")) || $("nav-grades");
+  const setExclusiveNavActive = (targetEl) => {
+    ALL_SIDEBAR_NAV_IDS.forEach((id) => {
+      const el = $(id);
+      if (el) el.classList.remove("active");
+    });
+    if (targetEl) targetEl.classList.add("active");
+  };
+
   navSurvey.addEventListener("click", (e) => {
     e.preventDefault();
 
-    const navGrades = $("nav-grades");
-    const navSchedule = $("nav-schedule");
+    const prevContentNav = getCurrentContentNav();
     const navSurveyBtn = $("nav-survey");
-    const navSettings = $("nav-settings");
-    [navGrades, navSchedule, navSurveyBtn, navSettings].forEach(
-      (n) => n && n.classList.remove("active"),
-    );
-    navSurveyBtn && navSurveyBtn.classList.add("active");
+    setExclusiveNavActive(navSurveyBtn);
 
     if (
       confirm(
@@ -934,6 +976,8 @@ function initSurveyWidget() {
           },
         );
       });
+    } else {
+      setExclusiveNavActive(prevContentNav);
     }
   });
 
@@ -1010,15 +1054,30 @@ function initScheduleModal() {
   )
     return;
 
+  const ALL_SIDEBAR_NAV_IDS = [
+    "nav-grades",
+    "nav-schedule",
+    "nav-survey",
+    "nav-settings",
+    "nav-ctk",
+    "nav-lhp",
+  ];
+  let prevContentNavBeforeModal = null;
+  const setExclusiveNavActive = (targetEl) => {
+    ALL_SIDEBAR_NAV_IDS.forEach((id) => {
+      const el = $(id);
+      if (el) el.classList.remove("active");
+    });
+    if (targetEl) targetEl.classList.add("active");
+  };
+
   navSchedule.addEventListener("click", (e) => {
     e.preventDefault();
-    const navGrades = $("nav-grades");
-    const navSurvey = $("nav-survey");
-    const navSettings = $("nav-settings");
-    [navGrades, navSchedule, navSurvey, navSettings].forEach(
-      (n) => n && n.classList.remove("active"),
-    );
-    navSchedule.classList.add("active");
+    prevContentNavBeforeModal =
+      ["nav-grades", "nav-settings", "nav-ctk", "nav-lhp"]
+        .map((id) => $(id))
+        .find((el) => el && el.classList.contains("active")) || $("nav-grades");
+    setExclusiveNavActive(navSchedule);
 
     modalWeeks.style.display = "flex";
     weeksInput.value = "5";
@@ -1028,11 +1087,20 @@ function initScheduleModal() {
 
   const closeWeeksModal = () => {
     modalWeeks.style.display = "none";
+    if (navSchedule.classList.contains("active") && prevContentNavBeforeModal) {
+      setExclusiveNavActive(prevContentNavBeforeModal);
+    }
+    navSchedule.focus();
   };
 
   btnCloseWeeksModal.addEventListener("click", closeWeeksModal);
   modalWeeks.addEventListener("click", (e) => {
     if (e.target === modalWeeks) closeWeeksModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modalWeeks.style.display === "flex") {
+      closeWeeksModal();
+    }
   });
 
   let isExecutingSync = false;
